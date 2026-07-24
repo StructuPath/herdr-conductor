@@ -13,6 +13,8 @@ the team).
 
 Verified on **herdr 0.7.5**.
 
+![herdr-conductor demo: a real two-role team on the live board](assets/herdr-conductor-demo.gif)
+
 **Docs:** the [StructuPath Herdr Plugins wiki](https://github.com/StructuPath/herdr-browser/wiki)
 is the practical guide to this plugin and its three siblings (Browser, Guard,
 Swarm).
