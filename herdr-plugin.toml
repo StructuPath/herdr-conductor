@@ -1,0 +1,32 @@
+id = "structupath.conductor"
+name = "Conductor"
+version = "0.1.0"
+min_herdr_version = "0.7.5"
+description = "Orchestrate a feature-delivery team as visible Herdr agent panes — dispatch worker agents, watch a live board, stand down cleanly"
+platforms = ["macos", "linux"]
+
+# The orchestrating AGENT drives dispatch by sourcing scripts/conductor-lib.sh
+# (Tier-1 transport, proven on herdr 0.7.5). These actions are the operational
+# surface around a run: a live board and a clean teardown. Plugin actions get no
+# argv/TTY, so dispatch itself is agent-driven, not an action.
+
+[[actions]]
+id = "board"
+title = "Open the Conductor board"
+description = "Live pane: one row per worker (role, kind, pane, state, cwd) for the active run"
+command = ["bash", "scripts/board.sh"]
+
+[[actions]]
+id = "stand-down"
+title = "Stand down the team"
+description = "Close every conductor-owned worker pane for this run; git branches are kept"
+command = ["bash", "scripts/stand-down.sh"]
+
+# Pane title doubles as the cleanup sweep label (pane list reports it as
+# "label") — keep it distinctive so a sweep can never match a user pane.
+
+[[panes]]
+id = "board-pane"
+title = "Conductor Board"
+placement = "split"
+command = ["bash", "scripts/board-pane.sh"]
