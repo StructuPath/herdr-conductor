@@ -20,7 +20,7 @@ if [ -n "$existing" ]; then
   exit 0
 fi
 
-if ! "$HERDR_BIN_PATH" plugin pane open --entrypoint board-pane --placement split --direction right --focus >/dev/null 2>&1; then
+if ! "$HERDR_BIN_PATH" plugin pane open --plugin structupath.conductor --entrypoint board-pane --placement split >/dev/null 2>&1; then
   echo "herdr-conductor: failed to open the board pane"
   exit 1
 fi
