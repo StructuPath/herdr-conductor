@@ -248,5 +248,5 @@ The transport is also the **Herdr adapter** in `feature-delivery-team`
 - Swarm state/manifests: `~/.local/state/herdr-swarm/run-<workspaceId>.json`
 - Conductor run registry: `~/.local/state/herdr-conductor/run-<id>/<role>.env`
 - Docs: each repo's `README.md`; plans in `herdr-{swarm,conductor}/docs/plans/`
-- Conductor is public (`StructuPath/herdr-conductor`, topic `herdr-plugin`); the
-  others: browser + guard public, swarm not yet marketplace-listed.
+- All four repos are public and carry the `herdr-plugin` topic (marketplace-listed):
+  `StructuPath/herdr-{browser,conductor,guard,swarm}`.
