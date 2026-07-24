@@ -1,5 +1,9 @@
 # Herdr Plugins Cheat-Sheet
 
+> **Public docs:** the [StructuPath Herdr Plugins wiki](https://github.com/StructuPath/herdr-browser/wiki)
+> (hub on the herdr-browser repo) is the published version of this sheet —
+> update both when plugin behavior changes.
+
 Four StructuPath plugins, all installed + verified working on **herdr 0.7.5**.
 Linked to local dev copies under `~/dev/structupath/`, so disk edits are live.
 All four are registered in `~/.config/herdr/plugins.json` (the herdr package registry).
