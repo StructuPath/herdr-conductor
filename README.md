@@ -13,6 +13,10 @@ the team).
 
 Verified on **herdr 0.7.5**.
 
+**Docs:** the [StructuPath Herdr Plugins wiki](https://github.com/StructuPath/herdr-browser/wiki)
+is the practical guide to this plugin and its three siblings (Browser, Guard,
+Swarm).
+
 ## The two halves
 
 | | Where it lives | What it does |
