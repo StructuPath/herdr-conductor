@@ -1,0 +1,49 @@
+{
+  "_comment": "Declarative herdr layout for a full-stack Flotion team — the herdr port of cmux/fs-team.layout.json. Template: scripts/herdr_spawn_fast.py substitutes __REPO__ (absolute repo path) and passes `root` to the layout.apply socket method, booting all five panes in one call instead of four sequential splits. Lead occupies the left half; plan/build-be/build-fe/test fill a 2x2 on the right. Unlike the cmux layout, panes carry NO command: herdr starts each agent afterwards with `agent start`, which yields a stable, addressable agent NAME plus readiness polling and real agent status. herdr's LayoutNode grammar has only two node types — {type:pane, label, cwd, env, command} and {type:split, direction:right|down, ratio, first, second}. NOTE: layout.apply REPLACES the target tab and returns a NEW tab_id; capture it from the response.",
+  "root": {
+    "type": "split",
+    "direction": "right",
+    "ratio": 0.5,
+    "first": {
+      "type": "pane",
+      "label": "👑 lead",
+      "cwd": "__REPO__"
+    },
+    "second": {
+      "type": "split",
+      "direction": "down",
+      "ratio": 0.5,
+      "first": {
+        "type": "split",
+        "direction": "right",
+        "ratio": 0.5,
+        "first": {
+          "type": "pane",
+          "label": "📐 plan",
+          "cwd": "__REPO__"
+        },
+        "second": {
+          "type": "pane",
+          "label": "⚙️ build-be",
+          "cwd": "__REPO__"
+        }
+      },
+      "second": {
+        "type": "split",
+        "direction": "right",
+        "ratio": 0.5,
+        "first": {
+          "type": "pane",
+          "label": "🎨 build-fe",
+          "cwd": "__REPO__"
+        },
+        "second": {
+          "type": "pane",
+          "label": "✅ test",
+          "cwd": "__REPO__"
+        }
+      }
+    }
+  },
+  "_roles_in_layout_order": ["lead", "plan", "build-be", "build-fe", "test"]
+}
