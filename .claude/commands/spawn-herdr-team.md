@@ -24,12 +24,13 @@ positional refs.
 TEAM: $1                 # short slug for the team; default "fs-team" if omitted
 FEATURE: $2              # everything after the slug — optional feature to ship now
 
-# Model blend (reasoning roles on GLM-5.2, build/verify on Minimax-M3)
-LEAD_MODEL:  openrouter/z-ai/glm-5.2
-PLAN_MODEL:  openrouter/z-ai/glm-5.2
-BE_MODEL:    openrouter/minimax/minimax-m3
-FE_MODEL:    openrouter/minimax/minimax-m3
-TEST_MODEL:  openrouter/minimax/minimax-m3
+# Model blend (orchestration on Opus 5, design taste on Fable 5,
+# bulk build on Codex Sol, verification on Sonnet 5)
+LEAD_MODEL:  anthropic/claude-opus-5
+PLAN_MODEL:  anthropic/claude-fable-5
+BE_MODEL:    openai-codex/gpt-5.6-sol
+FE_MODEL:    openai-codex/gpt-5.6-sol
+TEST_MODEL:  anthropic/claude-sonnet-5
 
 ROLES_DIR: .claude/agents          # lead-herdr.md, plan.md, build-be.md, build-fe.md, test.md
 ROSTER:    .team/<TEAM>.roster.json
@@ -62,7 +63,9 @@ apps/flotion/                  the app the team builds (Vue 3 + TS / FastAPI + S
   agent is never prompted at all.
 - **`agent_prompt_stalled` means the agent never started a turn** within ~5s of
   submission. That is almost always missing credentials, not a slow model. Check
-  that the workspace actually got the API keys (step 2) before blaming anything else.
+  `~/.pi/agent/auth.json` for the provider that role uses (step 2) before blaming
+  anything else — an expired `openai-codex` OAuth token stalls the two build roles
+  while the Claude roles keep working, which reads like a herdr bug and isn't one.
 - **Settle is not success.** A worker reaches `idle` after *any* turn, including
   one where it stopped to ask a question. Always confirm the agreed sentinel in
   the pane before treating a task as done.
@@ -89,8 +92,11 @@ apps/flotion/                  the app the team builds (Vue 3 + TS / FastAPI + S
    WS=$(printf '%s' "$WS_JSON"   | jq -r .result.workspace.workspace_id)
    LEAD_PANE=$(printf '%s' "$WS_JSON" | jq -r .result.root_pane.pane_id)
    ```
-   **If the team needs API keys** (the pi models here run through OpenRouter), pass
-   them at creation — herdr has no `--env-file`, so expand a dotenv into repeated
+   **The model blend needs no env injection.** pi resolves `anthropic` and
+   `openai-codex` credentials from `~/.pi/agent/auth.json`, which every workspace
+   inherits — verify both providers are present there before blaming a start failure
+   on the workspace. Inject env only for secrets the *app* needs (database URLs,
+   third-party keys). herdr has no `--env-file`, so expand a dotenv into repeated
    `--env` flags:
    ```bash
    ENVARGS=()
