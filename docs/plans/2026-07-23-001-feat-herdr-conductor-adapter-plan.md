@@ -163,3 +163,62 @@ State-detection reliability of the `wait` edge is the load-bearing unknown — U
 - herdr-swarm `docs/solutions/` + `spike-out/` (lifecycle gotchas, prompt-channel precedent, invariant-drift learning) — learnings sweep 2026-07-23
 - herdr-guard `docs/SPEC.md` (honest capability model; two-level rule scoping)
 - Origin spec + Fable verdict: `~/dev/structupath/herdr-conductor-spec.md`
+
+---
+
+## Tier-2 addendum (2026-07-25) — the `herdr-conductor` plugin
+
+Tier 1 shipped and the U4 dogfood returned **"Tier-2 plugin: GO"**. Tier 2 was then
+built out in the `herdr-conductor` repo against spec §4. Two decisions diverge from
+the origin spec and are recorded here in the KTD-1 style.
+
+### KTD-8. `harvest` is plain-git reconcile, not `herdr-swarm harvest`
+
+> **Divergence from origin spec (recorded).** Spec §4 says the `harvest` action
+> should "hand to `herdr-swarm harvest` (don't duplicate merge logic)". It cannot:
+> conductor worktrees are role-differentiated plain git worktrees, not swarm slots,
+> so swarm's harvest reads its own run registry and finds nothing. Registering
+> conductor worktrees as swarm slots would also deepen the workspace-keyed lock
+> collision already listed in Risks. `conductor_reconcile` therefore implements the
+> KTD-7 path this plan already specified — merge each writer branch into one
+> integration worktree, report per-branch results, never force, never delete a
+> branch — and the `harvest` action is a thin wrapper over it. Non-zero exit on any
+> conflict or missing branch, so a caller can gate on it.
+
+### KTD-9. The team config is JSON, not YAML
+
+> **Divergence from origin spec (recorded).** Spec D5 says to port
+> `multi-team-config.yaml`'s shape; it does not constrain serialization.
+> `.herdr-conductor.json` is parsed with python3's stdlib, which the transport
+> already depends on. YAML would add a pyyaml dependency that cannot be assumed on
+> a plugin user's machine, and JSON matches the sibling plugin's own project
+> override, `.herdr-guard.json`. The *shape* is ported: depth-1 per D1
+> (orchestrator → workers, no leads), one entry per role, per-role runtime `kind`
+> per D3.
+
+### What Tier 2 shipped
+
+| Spec §4 action | Status |
+|---|---|
+| `assemble` | Built — config → worktrees → guard drops → one agent pane per role → board |
+| `dispatch` | Deliberately **not** an action (actions get no argv/TTY). Declarative instead: `conductor_render_role` renders a role template into a dispatchable task file |
+| `status` | Built — live board pane, plus a one-shot `status` action |
+| `harvest` | Built per KTD-8 |
+| `stand-down` | Already shipped |
+
+Also closed: dogfood **finding 4** — `conductor_status` still read
+`agent read --source detection`, which returns rendered pane text, so every worker
+reported `unknown`. Both it and the board now share one `agent list` parser
+(`_c_agent_status_map`), with a regression test.
+
+Mode semantics (spec D2/D3, KTD-3) are expressed as one `mode` field per role:
+`write` (worktree + branch), `gated` (worktree, writes allowed for gate artifacts,
+guard audit drop), `read-only` (base tree, launch-flag locked, guard audit drop).
+
+### Still open
+
+- Live end-to-end smoke of `assemble` → dispatch → `harvest` → `stand-down` inside
+  a real herdr session. The transport verbs are dogfood-proven; the Tier-2
+  choreography over them is covered by tests and dry runs, not yet by a live run.
+- The spike items RESULTS.md left outstanding (codex/pi `(a)+(c)` coverage, `(c1)`
+  15× per kind, `(c2)` long-task early-settle, `(d2)`, `(e)`) remain outstanding.

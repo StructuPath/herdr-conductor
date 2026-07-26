@@ -7,6 +7,14 @@ by porting the proven `feature-delivery-team` role model (pi-library) and the
 **Status:** design spec, 2026-07-23. Verified against installed **herdr 0.7.5**.
 Sits beside `herdr-plugins-cheatsheet.md`.
 
+> **Built.** Tier 1 shipped (pi-library `feature-delivery-team`, dogfooded
+> 2026-07-23); Tier 2 shipped as this plugin (2026-07-25). Two decisions diverge
+> from what's written below — `harvest` is plain-git reconcile rather than a hand-off
+> to `herdr-swarm harvest` (§4), and the team config is JSON rather than YAML (§7 D5).
+> Both are recorded as KTD-8/KTD-9 in
+> `docs/plans/2026-07-23-001-feat-herdr-conductor-adapter-plan.md`, which supersedes
+> this spec wherever they disagree. This document is kept as the origin record.
+
 ---
 
 ## 1. The one-sentence idea
