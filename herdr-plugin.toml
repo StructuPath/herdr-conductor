@@ -6,15 +6,34 @@ description = "Orchestrate a feature-delivery team as visible Herdr agent panes 
 platforms = ["macos", "linux"]
 
 # The orchestrating AGENT drives dispatch by sourcing scripts/conductor-lib.sh
-# (Tier-1 transport, proven on herdr 0.7.5). These actions are the operational
-# surface around a run: a live board and a clean teardown. Plugin actions get no
-# argv/TTY, so dispatch itself is agent-driven, not an action.
+# (the transport, proven on herdr 0.7.5). These actions are the operational surface
+# around a run: stand the team up, watch it, harvest it, stand it down. Plugin
+# actions get no argv/TTY, so dispatch itself stays agent-driven — a team is
+# declared once in the workspace's .herdr-conductor.json and assembled from there.
+
+[[actions]]
+id = "assemble"
+title = "Assemble the team"
+description = "Stand up every role in the workspace's .herdr-conductor.json — worktrees, guard drops, one agent pane each — then open the board"
+command = ["bash", "scripts/assemble.sh"]
 
 [[actions]]
 id = "board"
 title = "Open the Conductor board"
 description = "Live pane: one row per worker (role, kind, pane, state, cwd) for the active run"
 command = ["bash", "scripts/board.sh"]
+
+[[actions]]
+id = "status"
+title = "Status of the run"
+description = "One-shot table: role, kind, pane, live agent state, cwd — the board's answer without a pane"
+command = ["bash", "scripts/status.sh"]
+
+[[actions]]
+id = "harvest"
+title = "Harvest the run"
+description = "Merge every writing role's branch into one integration worktree; conflicts are reported, never forced"
+command = ["bash", "scripts/harvest.sh"]
 
 [[actions]]
 id = "stand-down"

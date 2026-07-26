@@ -23,6 +23,10 @@ pane_require_node(){
   command -v node >/dev/null 2>&1 || pane_fatal "conductor $1: node (>=20) not found on PATH"
 }
 
+# The target repo is resolved by the transport's conductor_repo_root (which reads
+# HERDR_PLUGIN_CONTEXT_JSON.workspace_cwd and never trusts ambient cwd) — actions
+# below call it directly rather than keeping a second copy here.
+
 # Resolve the run id the same way conductor-lib does. Callers may pin
 # CONDUCTOR_RUN_ID; otherwise the newest run-* dir is the active run.
 conductor_active_run_dir(){
@@ -35,26 +39,32 @@ conductor_active_run_dir(){
   printf '%s' "$newest"
 }
 
+# Pin CONDUCTOR_RUN_ID to the active run, so the transport's run-scoped helpers
+# (teardown, reconcile, status) act on it rather than on this process's own $$.
+# Prints the run dir; returns 1 when there is no active run.
+conductor_pin_active_run(){
+  local rd; rd="$(conductor_active_run_dir)"
+  [ -n "$rd" ] && [ -d "$rd" ] || return 1
+  CONDUCTOR_RUN_ID="${CONDUCTOR_RUN_ID:-${rd##*/run-}}"
+  export CONDUCTOR_RUN_ID
+  printf '%s\n' "$rd"
+}
+
 # Emit the board as JSON (array of {role,kind,pane,cwd,status}) for the renderer.
-# Live status comes from `herdr agent list` (machine-readable) keyed by agent name
-# == role — NOT `agent read --source detection`, which returns terminal text.
+# Live status comes from the transport's _c_agent_status_map (`herdr agent list`) —
+# one parser, shared with conductor_status, so the two can't drift.
 conductor_board_json(){
   local rd; rd="$(conductor_active_run_dir)"
   if [ -z "$rd" ] || [ ! -d "$rd" ]; then printf '{"run":null,"workers":[]}\n'; return 0; fi
-  local agents_json; agents_json="$("$HERDR_BIN_PATH" agent list 2>/dev/null || printf '')"
-  ROLE_STATE_DIR="$rd" HERDR_AGENTS="$agents_json" python3 - <<'PY'
+  ROLE_STATE_DIR="$rd" CONDUCTOR_STATUS_MAP="$(_c_agent_status_map)" python3 - <<'PY'
 import json, os, glob, re
 rd = os.environ["ROLE_STATE_DIR"]
-# map agent name -> status from `herdr agent list`
+# agent name -> status, as "<name>\t<status>" lines from _c_agent_status_map
 status = {}
-raw = os.environ.get("HERDR_AGENTS", "")
-try:
-    d = json.loads(raw)
-    for a in d.get("result", {}).get("agents", d.get("agents", [])) or []:
-        n = a.get("name") or a.get("agent")
-        if n: status[n] = a.get("agent_status", "unknown")
-except Exception:
-    pass
+for line in os.environ.get("CONDUCTOR_STATUS_MAP", "").splitlines():
+    if "\t" in line:
+        n, s = line.split("\t", 1)
+        status[n] = s
 def envval(text, key):
     m = re.search(r'(?m)^%s=(.*)$' % re.escape(key), text)
     return m.group(1) if m else ""
