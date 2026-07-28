@@ -7,9 +7,10 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+const BASH = process.env.CONDUCTOR_TEST_BASH ?? "bash";
 
 function runLib(fn, env = {}) {
-  return spawnSync("bash", ["-c", `. "${ROOT}/scripts/lib.sh" && ${fn}`], {
+  return spawnSync(BASH, ["-c", `. "${ROOT}/scripts/lib.sh" && ${fn}`], {
     encoding: "utf8",
     env: { ...process.env, HERDR_PLUGIN_ROOT: ROOT, HERDR_BIN_PATH: "/bin/false", ...env },
   });
@@ -53,7 +54,7 @@ test("board JSON lists workers from the run registry with fallback status", () =
 
 test("stand-down reports cleanly when there is no active run", () => {
   const state = mkdtempSync(join(tmpdir(), "cond-"));
-  const r = spawnSync("bash", [join(ROOT, "scripts", "stand-down.sh")], {
+  const r = spawnSync(BASH, [join(ROOT, "scripts", "stand-down.sh")], {
     encoding: "utf8",
     env: { ...process.env, HERDR_PLUGIN_ROOT: ROOT, HERDR_BIN_PATH: "/bin/false", CONDUCTOR_STATE_DIR: state },
   });

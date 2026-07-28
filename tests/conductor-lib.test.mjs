@@ -15,6 +15,7 @@ import { fileURLToPath } from "node:url";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const LIB = join(ROOT, "scripts", "conductor-lib.sh");
 const SENTINEL = "<!-- REPORT-COMPLETE -->";
+const BASH = process.env.CONDUCTOR_TEST_BASH ?? "bash";
 
 const trash = [];
 function tmp(prefix = "cond-") {
@@ -29,7 +30,7 @@ process.on("exit", () => {
 // Source the lib and run a snippet. Dry-run by default; pass CONDUCTOR_DRY_RUN:"0"
 // for the tests that exercise real filesystem/git work.
 function runLib(snippet, env = {}) {
-  return spawnSync("bash", ["-c", `. "${LIB}"\n${snippet}`], {
+  return spawnSync(BASH, ["-c", `. "${LIB}"\n${snippet}`], {
     encoding: "utf8",
     env: {
       ...process.env,
@@ -303,13 +304,17 @@ test("assemble emits the full herdr sequence for every role", () => {
   assert.equal(team.roles.length, 3);
 });
 
-test("a dry-run assemble leaves the repo untouched", () => {
+test("a dry-run assemble avoids Herdr and Git mutations but creates transport files", () => {
   const repo = gitRepo();
   const cfg = teamConfig(repo, THREE_ROLES);
   runLib(`conductor_assemble "${cfg}"`, { CONDUCTOR_REPO: repo });
   assert.equal(git(repo, "worktree", "list").split("\n").length, 1, "dry run created a worktree");
   assert.ok(!existsSync(join(repo, ".herdr-guard.json")), "dry run wrote a guard policy");
   assert.equal(git(repo, "branch", "--list", "conductor/*"), "", "dry run created a branch");
+  assert.ok(
+    existsSync(join(repo, ".conductor", ".gitignore")),
+    "dry run unexpectedly stopped creating its documented local transport file",
+  );
 });
 
 // --- render_role -------------------------------------------------------------
@@ -549,7 +554,7 @@ test("repo_root prefers the workspace herdr handed us over ambient cwd", () => {
   // an action inherits the herdr server's cwd; trusting it targets the wrong repo
   const workspace = gitRepo();
   const elsewhere = gitRepo();
-  const r = spawnSync("bash", ["-c", `. "${LIB}"\nconductor_repo_root`], {
+  const r = spawnSync(BASH, ["-c", `. "${LIB}"\nconductor_repo_root`], {
     encoding: "utf8",
     cwd: elsewhere,
     env: {

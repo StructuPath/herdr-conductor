@@ -15,6 +15,7 @@ if ! conductor_pin_active_run >/dev/null; then
   exit 0
 fi
 
+# shellcheck disable=SC2119 # action intentionally accepts no positional arguments
 if conductor_reconcile; then
   echo "herdr-conductor: harvest clean — every writer branch merged."
   exit 0

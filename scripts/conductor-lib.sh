@@ -3,8 +3,9 @@
 #
 # An orchestrating agent sources this and drives worker agents as visible Herdr
 # panes: split -> agent start (readiness-polled) -> pointer-prompt -> settle via
-# the report sentinel (NOT agent state) -> teardown. Every design choice here was
-# proven live on herdr 0.7.5; see docs/spikes/2026-07-23-herdr-conductor/RESULTS.md.
+# the report sentinel (NOT agent state) -> teardown. Unit and dry-run tests cover
+# the current transport, but the complete Tier-2 lifecycle has no retained live
+# certification artifact. See README.md before using lifecycle mutators.
 #
 # Canonical copy lives in StructuPath/herdr-conductor; pi-library's
 # feature-delivery-team skill vendors a byte-identical duplicate. Edit here, then
@@ -18,7 +19,7 @@
 #     conductor_await         <role> [first_turn_ms]
 #     conductor_collect       <role>        # prints report on success; hard-fails otherwise
 #     conductor_status                      # one row per worker + live state
-#     conductor_teardown                    # closes conductor-owned panes only
+#     conductor_teardown                    # legacy: closes recorded pane IDs without live identity checks
 #
 #   Tier 2 — the team (declare it once in .herdr-conductor.json):
 #     conductor_config_load  [config-file]  # validate + normalize; prints JSON
@@ -33,7 +34,7 @@
 #   HERDR_BIN_PATH        herdr binary (default: herdr on PATH)
 #   CONDUCTOR_STATE_DIR   run registry (default: ~/.local/state/herdr-conductor)
 #   CONDUCTOR_ANCHOR_PANE pane to split from (default: focused pane)
-#   CONDUCTOR_DRY_RUN=1   print the herdr commands instead of running them
+#   CONDUCTOR_DRY_RUN=1   skip Herdr/Git mutations; still writes run/.conductor state
 #   CONDUCTOR_REPO        pin the target repo (default: workspace cwd, then $PWD)
 #   CONDUCTOR_ROLES_DIR   role templates (default: <lib>/../roles)
 #   CONDUCTOR_MISSION     text substituted into {{MISSION}} when rendering a role
@@ -69,7 +70,9 @@ _c_version_gate(){
   local v; v="$("$HERDR_BIN_PATH" --version 2>/dev/null | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
   [ -n "$v" ] || { _c_die "cannot read herdr version"; return 1; }
   # numeric compare vs min (0.7.5): fail if lower
-  local IFS=.; set -- $v; local a=$1 b=$2 c=$3; set -- $CONDUCTOR_MIN_HERDR; local x=$1 y=$2 z=$3
+  local IFS=. a b c x y z
+  read -r a b c <<< "$v"
+  read -r x y z <<< "$CONDUCTOR_MIN_HERDR"
   if [ "$a" -lt "$x" ] || { [ "$a" -eq "$x" ] && [ "$b" -lt "$y" ]; } || { [ "$a" -eq "$x" ] && [ "$b" -eq "$y" ] && [ "$c" -lt "$z" ]; }; then
     _c_die "herdr $v < required $CONDUCTOR_MIN_HERDR"; return 1
   fi
@@ -159,7 +162,7 @@ except Exception: print("")' 2>/dev/null)"
   # real dispatch runs warm. Optional — callers with a >=180s first-turn window can skip.
   if [ "$warm" = 1 ] && [ "$CONDUCTOR_DRY_RUN" != 1 ]; then
     _c_herdr agent prompt "$role" "Reply 'ready' and wait for your task." >/dev/null 2>&1
-    _c_herdr agent wait "$role" --until idle --until done --timeout 60000 >/dev/null 2>&1
+    _c_herdr agent wait "$role" --until idle --until "done" --timeout 60000 >/dev/null 2>&1
   fi
   printf '%s\n' "$pane"
 }
@@ -191,8 +194,8 @@ conductor_await(){
   _c_settle(){ # $1=timeout_ms -> 0 if fresh complete report appears
     _c_herdr agent wait "$role" --until working --timeout 20000 >/dev/null 2>&1  # advisory: ignore miss
     local budget=$(( ${1} / 3000 )); [ "$budget" -lt 1 ] && budget=1
-    local i
-    for i in $(seq 1 "$budget"); do
+    local _
+    for _ in $(seq 1 "$budget"); do
       if [ -f "$report" ] && grep -q "$CONDUCTOR_SENTINEL" "$report"; then
         local m; m="$(_c_mtime "$report")"
         [ "$m" -ge "$DISPATCH_TS" ] && return 0

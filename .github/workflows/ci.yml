@@ -8,9 +8,16 @@ permissions:
   contents: read
 
 jobs:
-  validate:
+  test:
+    name: Node ${{ matrix.node-version }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version:
+          - 20
+          - lts/*
     steps:
       - name: Check out repository
         # v4.2.2
@@ -19,10 +26,56 @@ jobs:
         # v4.0.3
         uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b
         with:
-          node-version: 20
+          node-version: ${{ matrix.node-version }}
       - name: Run tests
         run: npm test
+
+  macos-bash:
+    name: macOS system Bash 3.2
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        # v4.2.2
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Set up Node.js 20
+        # v4.0.3
+        uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b
+        with:
+          node-version: 20
+      - name: Require and parse with the macOS system Bash
+        run: |
+          version="$(
+            /bin/bash -c \
+              'printf "%s.%s" "${BASH_VERSINFO[0]}" "${BASH_VERSINFO[1]}"'
+          )"
+          test "$version" = "3.2"
+          /bin/bash -n scripts/*.sh
+      - name: Run tests through the macOS system Bash
+        env:
+          CONDUCTOR_TEST_BASH: /bin/bash
+        run: npm test
+
+  static:
+    name: Static and documentation gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        # v4.2.2
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Set up Node.js 20
+        # v4.0.3
+        uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b
+        with:
+          node-version: 20
       - name: Validate shell syntax
-        run: bash -n scripts/*.sh
+        run: npm run check:shell
+      - name: Run ShellCheck
+        run: shellcheck --shell=bash scripts/*.sh
       - name: Validate plugin manifest
-        run: node scripts/check-manifest.mjs
+        run: npm run check:manifest
+      - name: Validate documentation contracts
+        run: npm run check:docs
+      - name: Validate workflow syntax
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7

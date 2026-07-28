@@ -21,12 +21,13 @@ fi
 if ! conductor_assemble "$cfg"; then
   echo
   echo "herdr-conductor: assemble finished with errors (above)."
-  echo "  Workers that did start are registered — re-running assemble reuses them."
+  echo "  Some resources may remain. Inspect them manually; re-running is not recovery."
   exit 1
 fi
 
 echo
-# A dry run audits the sequence; it must not touch the live session either.
+# A dry run avoids the live Herdr session and Git mutations, but the transport
+# still writes run records and .conductor files; see README.md.
 if [ "${CONDUCTOR_DRY_RUN:-0}" = 1 ]; then
   echo "herdr-conductor: dry run — board not opened."
   exit 0

@@ -1,175 +1,223 @@
 # herdr-conductor
 
-> Orchestrate a feature-delivery team as **visible Herdr agent panes**. An
-> orchestrating agent dispatches worker agents (builder, validator, reviewer…),
-> watches them on a live board, and stands the team down cleanly.
+> [!WARNING]
+> Conductor `0.1.0` is an **advanced, attended assembly prototype**, not a durable
+> delivery workflow. Its current run selection and teardown state are not safely
+> scoped to a repository or Herdr workspace. **Do not invoke `stand-down` for an
+> existing or ambiguous run.** Inspect panes and state manually until the planned
+> identity/state rewrite is implemented and live-certified.
 
-The fourth StructuPath Herdr plugin, and the operational surface for the
-**Conductor** pattern. Where [herdr-swarm](https://github.com/StructuPath/herdr-swarm)
-fans out N *identical* agents into worktrees, Conductor runs a *role-differentiated
-team* — each worker is a real, attachable Herdr pane, mixed-vendor
-(claude/codex/pi), and **survives the orchestrator** (a crashed driver doesn't kill
-the team).
+Conductor coordinates a role-differentiated team—builders, validators, and
+reviewers—as visible Herdr agent panes. A human or trusted orchestrating agent
+sources `scripts/conductor-lib.sh`, dispatches work, checks report files, and
+chooses whether to reconcile writer branches. Herdr plugin actions expose the
+same prototype run through a board and one-shot lifecycle commands.
 
-Verified on **herdr 0.7.5**.
+The package requires Herdr `>=0.7.5`. Unit tests and dry-run transport tests cover
+the current shell code, but the complete Tier-2 sequence has not been certified
+in a live Herdr session. A worker process may remain alive after its driver exits;
+Conductor does not durably rediscover or adopt that worker after a crash.
 
 ![herdr-conductor demo: a real two-role team on the live board](assets/herdr-conductor-demo.gif)
 
-**Docs:** the [StructuPath Herdr Plugins wiki](https://github.com/StructuPath/herdr-browser/wiki)
-is the practical guide to this plugin and its three siblings (Browser, Guard,
-Swarm).
+**Canonical suite guide:** [Deliver with Conductor](https://github.com/StructuPath/herdr-suite-site/blob/main/docs-src/Conductor.md).
+The guide and this repository describe a supervised pattern, not an automatic
+approval pipeline.
 
-## The two halves
+## Current trust and safety boundaries
 
-| | Where it lives | What it does |
-|---|---|---|
-| **Transport** (the loop) | `scripts/conductor-lib.sh` | Sourced by an orchestrating agent to drive workers: `conductor_start_worker` → `conductor_dispatch` → `conductor_await` → `conductor_collect` → `conductor_teardown`. |
-| **Team** (declare it once) | `.herdr-conductor.json` + `roles/` | One declaration of who is on the team; `conductor_assemble` stands all of them up — worktrees, guard drops, panes. |
-| **Operational surface** (this plugin) | `assemble` / `board` / `status` / `harvest` / `stand-down` | Make a run visible and manageable as a first-class Herdr citizen. |
+The current runtime has important limitations:
 
-Dispatch is agent-driven, not an action, because Herdr plugin actions get no argv
-and no TTY — the intelligence that decomposes a feature and assigns roles is the
-orchestrating agent's, not a shell script's.
+- `board`, `status`, `harvest`, and `stand-down` select the newest global
+  `run-*` directory. They do not bind the run to the invoking repository or Herdr
+  workspace.
+- Role state is stored as shell assignments and sourced. It is not a strict,
+  non-executable state format.
+- Teardown trusts recorded pane IDs; it does not compare live workspace,
+  terminal, session, agent, cwd, and run identity before closing a pane.
+- `read-only` and `gated` are configuration labels that choose worktrees and
+  Guard drops. They do not select protected launch flags. Repository-provided
+  `launch_args` are passed through as supplied, and no post-run source
+  immutability check is performed.
+- Guard observes rendered pane text and writes audit events. It is advisory and
+  cannot enforce filesystem isolation or prove that a command was prevented.
+- Reconcile merges writer branches without requiring validated role reports,
+  validator/reviewer verdicts, or an approval record. The current validator and
+  reviewer trees are not advanced to the reconciled integration commit.
+- A dry run avoids Herdr and Git worktree/branch mutations, but still creates
+  local run state and `.conductor/` transport files. It is not filesystem
+  immutable.
+- Worktrees and same-user agent processes are coordination tools, not security
+  boundaries. Same-user processes can access or tamper with local state.
 
-## Why an agent, not an action
+Use a disposable repository and direct human supervision. Do not run Swarm and
+Conductor concurrently against the same Git common directory.
 
-The orchestrating agent (any coding agent in a Herdr pane) sources the transport
-and runs the loop. Completion is gated on a **report sentinel written to a file**,
-never on agent state — a worker reaches `idle` after *any* turn, including a
-clarifying question, so "settled" is not "done". Workers exchange work through
-`.conductor/task.md` (in) and `.conductor/report.md` (out); panes are for humans to
-watch and attach to.
+## Transport and team declaration
+
+| Part | Location | Current responsibility |
+| --- | --- | --- |
+| Transport | `scripts/conductor-lib.sh` | Starts workers, dispatches task-file pointers, waits, collects sentinel-terminated reports, and performs legacy reconcile/teardown. |
+| Team | `.herdr-conductor.json` + `roles/` | Declares role names, kinds, modes, ownership prompts, and optional launch arguments. |
+| Plugin surface | `assemble`, `board`, `status`, `harvest`, `stand-down` | Exposes the prototype run through Herdr actions. |
+
+Dispatch remains agent-driven because Herdr plugin actions receive neither argv
+nor a TTY. Completion is a report-file convention, not an agent-state verdict:
+workers read `.conductor/task.md`, write `.conductor/report.md`, and end the
+report with `<!-- REPORT-COMPLETE -->`. The marker rejects absent, stale, and
+obviously incomplete reports, but it is not bound to a run, role, task digest, or
+commit and must not be treated as approval evidence.
+
+Example attended loop:
 
 ```bash
-# inside the orchestrating agent's pane
 . scripts/conductor-lib.sh
-conductor_assemble                                    # the whole team, from the config
+conductor_assemble
 conductor_dispatch builder-engine "$(CONDUCTOR_MISSION='Add the widget engine.' \
-                                     conductor_render_role builder-engine contract.md)"
-conductor_await    builder-engine && conductor_collect builder-engine
-conductor_reconcile                                   # merge the writer branches
+  conductor_render_role builder-engine contract.md)"
+conductor_await builder-engine && conductor_collect builder-engine
+# Inspect branches and reports before deciding whether to reconcile.
+conductor_reconcile
 ```
 
-Workers warm on start by default (a cold interactive agent opens on a welcome
-screen and drops its first prompt); pass `--no-warm` if you own a ≥180s first turn.
-Every worker cwd gets a `.conductor/.gitignore` so transport state is never
-committed.
-
-## Declaring a team
-
-Put `.herdr-conductor.json` in the repo the team will work on:
+Example team declaration:
 
 ```json
 {
   "version": 1,
   "base_branch": "main",
   "roles": [
-    { "name": "builder-engine", "kind": "claude", "mode": "write",
-      "owns": "engine, catalog, domain logic", "must_not_own": "UI layout, routes" },
-    { "name": "builder-ui", "kind": "claude", "mode": "write",
-      "owns": "components, routes, UI states", "must_not_own": "engine internals" },
-    { "name": "validator", "kind": "codex", "mode": "gated",
-      "launch_args": ["--sandbox", "workspace-write"] },
-    { "name": "reviewer", "kind": "codex", "mode": "read-only",
-      "launch_args": ["--sandbox", "read-only"] }
+    {
+      "name": "builder-engine",
+      "kind": "claude",
+      "mode": "write",
+      "owns": "engine, catalog, domain logic",
+      "must_not_own": "UI layout, routes"
+    },
+    {
+      "name": "validator",
+      "kind": "codex",
+      "mode": "gated",
+      "launch_args": ["--sandbox", "workspace-write"]
+    },
+    {
+      "name": "reviewer",
+      "kind": "codex",
+      "mode": "read-only",
+      "launch_args": ["--sandbox", "read-only"]
+    }
   ]
 }
 ```
 
-`mode` is the one knob that drives isolation and enforcement:
+Current mode mapping:
 
-| mode | worktree + branch | guard drop | for |
-|---|---|---|---|
-| `write` | yes | no | builders and test-author — own a slice, commit to a role branch |
-| `gated` | yes | no source edits, but writes allowed | validator — running gates *needs* writes (`.pytest_cache`, `node_modules`, coverage), so it is scoped to a disposable worktree rather than locked |
-| `read-only` | no (base tree) | yes | reviewer — pure diff review, locked by launch flags |
+| Mode | Worktree + branch | Guard audit drop | Current meaning |
+| --- | --- | --- | --- |
+| `write` | yes | no | Writer role on a role branch. |
+| `gated` | yes | yes | Gate role in a disposable worktree; source immutability is requested, not verified. |
+| `read-only` | no; uses the base tree | yes | Review role; isolation depends on caller-supplied launch flags and is not enforced by the mode. |
 
-`template` defaults to the role name and selects a prompt from `roles/`
-(`builder-engine`, `builder-ui`, `test-author`, `validator`, `reviewer` — the
-five feature-delivery-team roles, verbatim). `conductor_render_role` fills the
-`{{MISSION}}` / `{{CONTEXT}}` / `{{OWNS}}` / `{{MUST_NOT_OWN}}` slots and appends
-the report-sentinel contract, so no template can forget the thing completion
-gates on.
-
-The guard drop is a `.herdr-guard.json` audit policy — substring rules at
-severity `alert`, which is all a repo-supplied override is permitted. It is a
-trail, not a sandbox: Guard sees rendered pane text and cannot block a write.
-The launch flags are the actual enforcement.
+A truly read-only reviewer also cannot write the current in-tree report path.
+Until a separate writable report outbox exists, treat the reviewer prompt and
+report convention as cooperative instructions rather than a verified read-only
+control.
 
 ## Actions
 
+The manifest exposes exactly five actions:
+
 ```bash
-herdr plugin action invoke assemble   --plugin structupath.conductor   # stand the team up
-herdr plugin action invoke board      --plugin structupath.conductor   # open the live board
-herdr plugin action invoke status     --plugin structupath.conductor   # one-shot table
-herdr plugin action invoke harvest    --plugin structupath.conductor   # merge writer branches
-herdr plugin action invoke stand-down --plugin structupath.conductor   # close worker panes
+herdr plugin action invoke assemble   --plugin structupath.conductor
+herdr plugin action invoke board      --plugin structupath.conductor
+herdr plugin action invoke status     --plugin structupath.conductor
+herdr plugin action invoke harvest    --plugin structupath.conductor
+herdr plugin action invoke stand-down --plugin structupath.conductor
 ```
 
-- **Assemble** — reads the workspace's `.herdr-conductor.json` and stands up every
-  role: a git worktree per writing role, a guard audit drop per review role, one
-  live agent pane each. Then opens the board. Re-running reuses workers and
-  worktrees that already exist, so a crash mid-assemble is recoverable.
-- **Board** — one row per worker: role, kind, pane, live status (from
-  `herdr agent list`, not terminal scraping), and cwd. Refreshes every 2s; `q` quits.
-- **Status** — the same answer as one printed table, for a log or a plain shell.
-- **Harvest** — merges every writing role's branch into one integration worktree.
-  Nothing is forced and no branch is deleted: a `CONFLICT` row means that branch
-  was left alone for a human. Exits non-zero if any branch conflicted or is missing.
-- **Stand down** — closes only conductor-owned panes for the active run (ownership
-  verified); git branches and worktrees are left intact.
+- **Assemble** reads `.herdr-conductor.json`, prepares role resources, starts one
+  pane per role, and opens the board. Re-running may reuse a directory or branch,
+  but does not prove its repository, branch, fork commit, or ownership and is not
+  crash recovery.
+- **Board** displays the globally selected run and refreshes agent state every two
+  seconds. It is observational; confirm the displayed cwd manually.
+- **Status** prints the same globally selected run once.
+- **Harvest** runs plain-Git reconcile into an integration worktree. It never
+  force-merges or deletes branches, but it has no report/verdict/approval
+  precondition. Inspect exact branches and commits first.
+- **Stand down** is the legacy teardown path. It sources recorded state and closes
+  recorded pane IDs without live identity verification. Do not use it on current
+  persisted state or as a cleanup mechanism.
 
-The target repo is resolved from herdr's `HERDR_PLUGIN_CONTEXT_JSON.workspace_cwd`,
-never from ambient cwd — an action inherits whatever cwd the herdr server had, and
-trusting it silently targets the wrong repository.
+Herdr action processes resolve the target repository from
+`HERDR_PLUGIN_CONTEXT_JSON.workspace_cwd`; this avoids ambient server cwd for the
+initial repository lookup, but it does not fix global active-run selection.
 
-## Install
+## Relationship to Swarm and Guard
+
+Swarm and Conductor are separate sibling workflows with different semantics:
+
+```text
+SWARM explores interchangeable candidates
+    -- explicit human-selected commit -->
+CONDUCTOR coordinates differentiated delivery roles
+
+GUARD may observe either workflow; native harness/OS controls enforce.
+```
+
+Conductor creates and reconciles its own Git worktrees. It does not invoke Swarm,
+read Swarm state, or use Swarm as a hidden lifecycle backend. The supported
+composition is sequential: a human selects an exact Swarm commit, then starts a
+separate Conductor run from an explicitly reviewed base. Concurrent mutation of
+one repository is unsupported.
+
+## Install and requirements
 
 ```bash
-herdr plugin install StructuPath/herdr-conductor    # from the marketplace
-# or, for local dev:
+herdr plugin install StructuPath/herdr-conductor
+# local development
 herdr plugin link /path/to/herdr-conductor
 ```
+
+Requirements: Herdr `>=0.7.5`, Node.js `>=20`, Python 3 with `tomllib`, and Bash
+3.2 or newer on macOS or Linux. Windows is not supported.
 
 Health check:
 
 ```bash
-herdr plugin list           # enabled?
-herdr plugin action list    # actions registered?
+herdr plugin list
+herdr plugin action list
 ```
 
-## The composition
+## Development
 
-Conductor is one of three plugins that compose into a full orchestration substrate,
-each doing the one job it does well:
-
+```bash
+npm test
+npm run check
+shellcheck --shell=bash scripts/*.sh
+go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
 ```
-CONDUCTOR decides   →   SWARM isolates        →   GUARD enforces
-(this plugin)           (worktree per writer)     (read-only audit for review roles)
-```
 
-## Requirements
-
-- herdr ≥ 0.7.5, Node ≥ 20, Python 3, Bash (3.2+).
-- macOS / Linux. (Herdr has documented Windows plugin defects; not supported.)
+See [CONTRIBUTING.md](CONTRIBUTING.md) for review gates and
+[SECURITY.md](SECURITY.md) for private reporting and current safe-use guidance.
 
 ## Layout
 
-```
-herdr-plugin.toml         manifest (five actions + the board pane)
-scripts/conductor-lib.sh  the transport (agent sources this) — proven on 0.7.5
-scripts/lib.sh            plugin glue: run resolution, board JSON over the run registry
-scripts/assemble.sh       action: stand up the declared team, then open the board
-scripts/board.sh          action: open the board pane (singleton)
-scripts/status.sh         action: one-shot status table
-scripts/harvest.sh        action: merge writer branches (KTD-7 reconcile)
-scripts/stand-down.sh     action: teardown via the transport
-scripts/board-pane.sh     pane entrypoint → exec bin/renderer.mjs
-roles/                    the five feature-delivery role prompts, with {{slots}}
-bin/renderer.mjs          zero-dep live board renderer
-tests/                    node --test
-docs/plans/               the Conductor plan (Tier 1 + Tier 2 lineage)
+```text
+herdr-plugin.toml          manifest: five actions and one board pane
+scripts/conductor-lib.sh   current Bash transport and lifecycle implementation
+scripts/lib.sh             plugin glue and global run resolution
+scripts/{assemble,board,status,harvest,stand-down}.sh
+bin/renderer.mjs           zero-dependency live board renderer
+roles/                     feature-delivery role prompt templates
+tests/                     Node built-in test suite
+docs/history/              historical origin/implementation records, not contracts
 ```
 
-`scripts/conductor-lib.sh` is canonical here; pi-library's `feature-delivery-team`
-skill vendors a byte-identical copy of it plus `roles/`. Edit here, then re-vendor.
+The unrelated Flotion prototype scaffolding restored by commit `7067a06` was
+removed from the product tree in Stage 0. Git history preserves its exact files;
+[`docs/history/README.md`](docs/history/README.md) records the provenance.
+
+`scripts/conductor-lib.sh` is canonical in this repository. The pi-library
+`feature-delivery-team` skill currently vendors a copy, so any future runtime
+change requires an explicit cross-repository synchronization and evidence review.

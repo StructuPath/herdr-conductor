@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# lib.sh — herdr-conductor plugin glue over the proven Tier-1 transport.
+# lib.sh — herdr-conductor plugin glue over the current Tier-1 transport.
 #
 # Sources conductor-lib.sh (the agent-driven transport: start/dispatch/await/
-# collect/teardown, proven live on herdr 0.7.5) and adds the plugin-side helpers
+# collect plus legacy teardown) and adds the plugin-side helpers
 # the action + pane scripts need: plugin-root resolution, board-state reads over
 # the run registry, and a pane_fatal that keeps a failed pane on screen.
 #
