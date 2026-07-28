@@ -17,10 +17,14 @@ CONDUCTOR_PLUGIN_ROOT="${HERDR_PLUGIN_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")
 
 # A pane whose process exits immediately closes before the user can read the
 # error — that reads as a crash. Hold the message on screen instead.
-pane_fatal(){ printf '\n  %s\n\n' "$1" >&2; sleep 600; exit 1; }
+pane_fatal() {
+	printf '\n  %s\n\n' "$1" >&2
+	sleep 600
+	exit 1
+}
 
-pane_require_node(){
-  command -v node >/dev/null 2>&1 || pane_fatal "conductor $1: node (>=20) not found on PATH"
+pane_require_node() {
+	command -v node >/dev/null 2>&1 || pane_fatal "conductor $1: node (>=20) not found on PATH"
 }
 
 # The target repo is resolved by the transport's conductor_repo_root (which reads
@@ -29,34 +33,42 @@ pane_require_node(){
 
 # Resolve the run id the same way conductor-lib does. Callers may pin
 # CONDUCTOR_RUN_ID; otherwise the newest run-* dir is the active run.
-conductor_active_run_dir(){
-  if [ -n "${CONDUCTOR_RUN_ID:-}" ]; then printf '%s/run-%s' "$CONDUCTOR_STATE_DIR" "$CONDUCTOR_RUN_ID"; return 0; fi
-  local newest="" d
-  for d in "$CONDUCTOR_STATE_DIR"/run-*; do
-    [ -d "$d" ] || continue
-    if [ -z "$newest" ] || [ "$d" -nt "$newest" ]; then newest="$d"; fi
-  done
-  printf '%s' "$newest"
+conductor_active_run_dir() {
+	if [ -n "${CONDUCTOR_RUN_ID:-}" ]; then
+		printf '%s/run-%s' "$CONDUCTOR_STATE_DIR" "$CONDUCTOR_RUN_ID"
+		return 0
+	fi
+	local newest="" d
+	for d in "$CONDUCTOR_STATE_DIR"/run-*; do
+		[ -d "$d" ] || continue
+		if [ -z "$newest" ] || [ "$d" -nt "$newest" ]; then newest="$d"; fi
+	done
+	printf '%s' "$newest"
 }
 
 # Pin CONDUCTOR_RUN_ID to the active run, so the transport's run-scoped helpers
 # (teardown, reconcile, status) act on it rather than on this process's own $$.
 # Prints the run dir; returns 1 when there is no active run.
-conductor_pin_active_run(){
-  local rd; rd="$(conductor_active_run_dir)"
-  [ -n "$rd" ] && [ -d "$rd" ] || return 1
-  CONDUCTOR_RUN_ID="${CONDUCTOR_RUN_ID:-${rd##*/run-}}"
-  export CONDUCTOR_RUN_ID
-  printf '%s\n' "$rd"
+conductor_pin_active_run() {
+	local rd
+	rd="$(conductor_active_run_dir)"
+	[ -n "$rd" ] && [ -d "$rd" ] || return 1
+	CONDUCTOR_RUN_ID="${CONDUCTOR_RUN_ID:-${rd##*/run-}}"
+	export CONDUCTOR_RUN_ID
+	printf '%s\n' "$rd"
 }
 
 # Emit the board as JSON (array of {role,kind,pane,cwd,status}) for the renderer.
 # Live status comes from the transport's _c_agent_status_map (`herdr agent list`) —
 # one parser, shared with conductor_status, so the two can't drift.
-conductor_board_json(){
-  local rd; rd="$(conductor_active_run_dir)"
-  if [ -z "$rd" ] || [ ! -d "$rd" ]; then printf '{"run":null,"workers":[]}\n'; return 0; fi
-  ROLE_STATE_DIR="$rd" CONDUCTOR_STATUS_MAP="$(_c_agent_status_map)" python3 - <<'PY'
+conductor_board_json() {
+	local rd
+	rd="$(conductor_active_run_dir)"
+	if [ -z "$rd" ] || [ ! -d "$rd" ]; then
+		printf '{"run":null,"workers":[]}\n'
+		return 0
+	fi
+	ROLE_STATE_DIR="$rd" CONDUCTOR_STATUS_MAP="$(_c_agent_status_map)" python3 - <<'PY'
 import json, os, glob, re
 rd = os.environ["ROLE_STATE_DIR"]
 # agent name -> status, as "<name>\t<status>" lines from _c_agent_status_map

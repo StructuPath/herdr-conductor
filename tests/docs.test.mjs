@@ -50,7 +50,9 @@ test("documentation validation requires README and manifest actions to agree", (
 
 	const { errors } = validateDocs(repository);
 	assert.ok(
-		errors.some((error) => error.startsWith("README action commands must be exactly")),
+		errors.some((error) =>
+			error.startsWith("README action commands must be exactly"),
+		),
 		errors.join("\n"),
 	);
 });
@@ -75,7 +77,9 @@ test("documentation validation rejects restored Flotion product scaffolding", ()
 
 	const { errors } = validateDocs(repository);
 	assert.ok(
-		errors.some((error) => error.includes("legacy/non-product path must not exist: .claude")),
+		errors.some((error) =>
+			error.includes("legacy/non-product path must not exist: .claude"),
+		),
 		errors.join("\n"),
 	);
 });

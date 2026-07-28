@@ -4,7 +4,13 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseManifest } from "./check-manifest.mjs";
 
-const EXPECTED_ACTIONS = ["assemble", "board", "status", "harvest", "stand-down"];
+const EXPECTED_ACTIONS = [
+	"assemble",
+	"board",
+	"status",
+	"harvest",
+	"stand-down",
+];
 const EXPECTED_PANES = ["board-pane"];
 const LEGACY_PRODUCT_PATHS = [
 	".claude",
@@ -52,13 +58,17 @@ function normalized(content) {
 
 function ids(entries) {
 	if (!Array.isArray(entries)) return [];
-	return entries.map((entry) => entry?.id).filter((id) => typeof id === "string");
+	return entries
+		.map((entry) => entry?.id)
+		.filter((id) => typeof id === "string");
 }
 
 function sameMembers(actual, expected) {
 	return (
 		actual.length === expected.length &&
-		[...actual].sort().every((value, index) => value === [...expected].sort()[index])
+		[...actual]
+			.sort()
+			.every((value, index) => value === [...expected].sort()[index])
 	);
 }
 
@@ -93,16 +103,22 @@ export function validateDocs(root) {
 	}
 
 	const readme = read(resolvedRoot, "README.md", errors);
-	const documentedActions = [...readme.matchAll(/action invoke ([a-z][a-z0-9-]*)/g)].map(
-		(match) => match[1],
-	);
+	const documentedActions = [
+		...readme.matchAll(/action invoke ([a-z][a-z0-9-]*)/g),
+	].map((match) => match[1]);
 	if (!sameMembers(documentedActions, EXPECTED_ACTIONS)) {
 		errors.push(
 			`README action commands must be exactly ${EXPECTED_ACTIONS.join(", ")}; found ${documentedActions.join(", ") || "none"}`,
 		);
 	}
 
-	const requiredScripts = ["test", "check", "check:shell", "check:manifest", "check:docs"];
+	const requiredScripts = [
+		"test",
+		"check",
+		"check:shell",
+		"check:manifest",
+		"check:docs",
+	];
 	for (const script of requiredScripts) {
 		if (typeof packageJson?.scripts?.[script] !== "string") {
 			errors.push(`package.json must define scripts.${script}`);
@@ -115,7 +131,11 @@ export function validateDocs(root) {
 		}
 	}
 	for (const relative of HISTORY_PATHS) {
-		if (!fs.statSync(path.join(resolvedRoot, relative), { throwIfNoEntry: false })?.isFile()) {
+		if (
+			!fs
+				.statSync(path.join(resolvedRoot, relative), { throwIfNoEntry: false })
+				?.isFile()
+		) {
 			errors.push(`historical record is missing: ${relative}`);
 		}
 	}
@@ -124,7 +144,9 @@ export function validateDocs(root) {
 		const content = read(resolvedRoot, relative, errors);
 		for (const claim of RETIRED_CLAIMS) {
 			if (content.includes(claim)) {
-				errors.push(`${relative} contains retired current-behavior claim: ${claim}`);
+				errors.push(
+					`${relative} contains retired current-behavior claim: ${claim}`,
+				);
 			}
 		}
 	}
@@ -159,7 +181,8 @@ if (process.argv[1] && path.resolve(process.argv[1]) === sourcePath) {
 	const root = path.resolve(path.dirname(sourcePath), "..");
 	const result = validateDocs(root);
 	if (result.errors.length > 0) {
-		for (const error of result.errors) process.stderr.write(`error: ${error}\n`);
+		for (const error of result.errors)
+			process.stderr.write(`error: ${error}\n`);
 		process.exitCode = 1;
 	} else {
 		process.stdout.write(
