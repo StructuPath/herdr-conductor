@@ -1,5 +1,5 @@
-// Transport tests for scripts/conductor-lib.sh — the canonical copy of the loop
-// that pi-library's feature-delivery-team skill vendors.
+// Transport tests for this repository's scripts/conductor-lib.sh. Any pi-library
+// adaptation is maintained separately and requires an explicit compatibility check.
 //
 // Everything runs against a throwaway CONDUCTOR_STATE_DIR and, where a repo is
 // needed, a throwaway git repo. No test touches a real herdr: dry-run mode audits
@@ -265,7 +265,7 @@ test("config normalizes and fills defaults", () => {
 	// template defaults to the role name; branch defaults to conductor/<role>
 	assert.equal(engine.template, "builder-engine");
 	assert.equal(engine.branch, "conductor/builder-engine");
-	// mode drives isolation and enforcement
+	// mode selects worktree placement and advisory Guard metadata only
 	assert.deepEqual([engine.worktree, engine.guard], [true, false]);
 	assert.deepEqual([validator.worktree, validator.guard], [true, true]);
 	assert.deepEqual([reviewer.worktree, reviewer.guard], [false, true]);
@@ -486,7 +486,7 @@ test("worktree creates a role branch, and reuses it on a second call", () => {
 		"conductor/builder-engine",
 	);
 
-	// reuse matters after a crash: the worker must land back in its half-done tree
+	// path reuse preserves files; it does not adopt a prior worker or recover a run
 	writeFileSync(join(wt, "wip.txt"), "half-finished\n");
 	const second = runLib(
 		"conductor_worktree builder-engine main .conductor-worktrees",

@@ -25,22 +25,43 @@ const HISTORY_PATHS = [
 	"docs/history/2026-07-23-herdr-conductor-origin-spec.md",
 	"docs/history/2026-07-23-feature-delivery-adapter-plan.md",
 ];
-const CURRENT_DOCS = [
+const CURRENT_CLAIM_FILES = [
 	"README.md",
 	"docs/herdr-plugins-cheatsheet.md",
 	"roles/reviewer.md",
 	"roles/validator.md",
 	"herdr-plugin.toml",
+	"scripts/conductor-lib.sh",
+	"tests/conductor-lib.test.mjs",
 ];
 const RETIRED_CLAIMS = [
-	"survives the orchestrator",
-	"mode is the one knob that drives isolation and enforcement",
-	"crash mid-assemble is recoverable",
-	"ownership verified",
-	"GUARD enforces",
-	"SWARM isolates",
-	"you are launched fully read-only",
-	"stand down cleanly",
+	["orchestrator survival", /survives? the orchestrator/i],
+	[
+		"mode-enforced isolation",
+		/mode.{0,60}(?:drives?|controls?|enforces?).{0,30}(?:isolation|enforcement)/i,
+	],
+	[
+		"crash recovery",
+		/(?:crash(?: mid-assemble)? (?:is |be )?recoverable|recover\w*.{0,40}(?:from|after) (?:a )?crash)/i,
+	],
+	["verified ownership", /(?:ownership verified|verified ownership)/i],
+	["Guard enforcement", /guard (?:directly )?enforces?/i],
+	["Swarm isolation", /swarm.{0,30}isolates?/i],
+	["enforced read-only launch", /launched fully read-only/i],
+	["clean stand-down", /stand down cleanly/i],
+	[
+		"unverified recorded pane ownership",
+		/only panes?.{0,30}(?:we|conductor).{0,20}(?:started|created|owns?)/i,
+	],
+	[
+		"unverified recorded Guard-file ownership",
+		/only guard files?.{0,30}(?:we|conductor).{0,20}(?:wrote|created|owns?)/i,
+	],
+	["byte-identical vendoring", /byte-identical (?:copy|duplicate)/i],
+	[
+		"cross-process worker recovery",
+		/(?:retry.{0,80}re-uses? (?:them|workers)|re-assembl\w*.{0,100}after a crash)/i,
+	],
 ];
 
 function read(root, relative, errors) {
@@ -140,10 +161,10 @@ export function validateDocs(root) {
 		}
 	}
 
-	for (const relative of CURRENT_DOCS) {
-		const content = read(resolvedRoot, relative, errors);
-		for (const claim of RETIRED_CLAIMS) {
-			if (content.includes(claim)) {
+	for (const relative of CURRENT_CLAIM_FILES) {
+		const content = normalized(read(resolvedRoot, relative, errors));
+		for (const [claim, pattern] of RETIRED_CLAIMS) {
+			if (pattern.test(content)) {
 				errors.push(
 					`${relative} contains retired current-behavior claim: ${claim}`,
 				);
@@ -158,7 +179,18 @@ export function validateDocs(root) {
 		["README.md", "not filesystem immutable"],
 		["README.md", "does not invoke Swarm"],
 		["roles/reviewer.md", "not enforcement"],
+		["roles/reviewer.md", "Expected integration SHA: <full 40-hex SHA>"],
+		["roles/reviewer.md", "git rev-parse HEAD"],
+		["roles/reviewer.md", "output `BLOCKED`"],
+		["roles/reviewer.md", "does not advance this cwd"],
 		["roles/validator.md", "does not verify source immutability"],
+		["roles/validator.md", "Expected integration SHA: <full 40-hex SHA>"],
+		["roles/validator.md", "git rev-parse HEAD"],
+		["roles/validator.md", "output `BLOCKED`"],
+		["roles/validator.md", "does not advance this cwd"],
+		["scripts/conductor-lib.sh", "does not verify ownership or recover/adopt"],
+		["scripts/conductor-lib.sh", "No live pane identity"],
+		["scripts/conductor-lib.sh", "changes do not synchronize automatically"],
 		["herdr-plugin.toml", "Legacy unsafe teardown"],
 		["docs/history/README.md", "not current runtime"],
 	];
@@ -172,7 +204,7 @@ export function validateDocs(root) {
 	return {
 		errors,
 		actionCount: manifestActions.length,
-		currentDocumentCount: CURRENT_DOCS.length,
+		currentDocumentCount: CURRENT_CLAIM_FILES.length,
 	};
 }
 

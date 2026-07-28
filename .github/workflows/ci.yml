@@ -1,6 +1,7 @@
+---
 name: CI
 
-on:
+"on":
   pull_request:
   push:
 
@@ -71,8 +72,12 @@ jobs:
           node-version: 20
       - name: Validate shell syntax
         run: npm run check:shell
-      - name: Run ShellCheck
-        run: shellcheck --shell=bash scripts/*.sh
+      - name: Run hosted ShellCheck
+        run: |
+          # ubuntu-latest may update its preinstalled ShellCheck independently.
+          # Print the exact version so hosted/local differences are observable.
+          shellcheck --version
+          shellcheck --shell=bash scripts/*.sh
       - name: Validate plugin manifest
         run: npm run check:manifest
       - name: Validate documentation contracts

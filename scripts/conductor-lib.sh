@@ -7,9 +7,9 @@
 # the current transport, but the complete Tier-2 lifecycle has no retained live
 # certification artifact. See README.md before using lifecycle mutators.
 #
-# Canonical copy lives in StructuPath/herdr-conductor; pi-library's
-# feature-delivery-team skill vendors a byte-identical duplicate. Edit here, then
-# re-vendor — never the other way around.
+# This repository owns its transport copy. pi-library may carry a separately
+# maintained adaptation; changes do not synchronize automatically, so compare its
+# copy explicitly before claiming the two remain aligned.
 #
 # Contract (bash 3.2 compatible — no associative arrays; state lives in files):
 #
@@ -478,19 +478,19 @@ PY
 }
 
 # conductor_worktree <role> <base-branch> <worktree-root> [branch]
-# Creates (or reuses) the role's git worktree and prints its path. Reuse is
-# deliberate: re-assembling a team after a crash must land the worker back in the
-# tree its half-finished work is in, not a fresh one.
+# Creates the role's git worktree or reuses the directory at that configured path.
+# Directory reuse preserves files, but does not verify ownership or recover/adopt a
+# prior run's worker, pane, process, or state.
 conductor_worktree() {
 	local role="${1:-}" base="${2:-}" wtroot="${3:-}" branch="${4:-conductor/${1:-}}"
 	_c_slug_ok "$role" || {
 		_c_die "role '$role' is not a valid agent name"
 		return 1
 	}
-	[ -n "$base" ] && [ -n "$wtroot" ] || {
+	if [ -z "$base" ] || [ -z "$wtroot" ]; then
 		_c_die "conductor_worktree needs <role> <base-branch> <worktree-root>"
 		return 1
-	}
+	fi
 	local repo
 	repo="$(_c_repo_or_pwd)" || return 1
 	local rel=""
@@ -539,8 +539,8 @@ conductor_worktree() {
 # Guard's project-override contract (herdr-guard docs/SPEC.md): the file lives at
 # <workspace cwd>/.herdr-guard.json, may add SUBSTRING rules only, and may raise
 # severity to `alert` at most. So this is an AUDIT layer, not a sandbox — guard
-# sees rendered pane text and cannot stop a write. The launch flags on the worker
-# (`--sandbox read-only` and friends) are the actual enforcement; this is the trail.
+# sees rendered pane text and cannot stop a write. Caller-supplied launch flags may
+# request a native sandbox, but Conductor does not select or verify enforcement.
 conductor_guard_drop() {
 	local cwd="${1:-}"
 	[ -d "$cwd" ] || {
@@ -580,8 +580,8 @@ JSON
 # conductor_assemble [config] — the whole team from one declaration.
 # Per role: worktree (write/gated) -> guard drop (gated/read-only) -> start_worker
 # with the role's kind and launch flags. Partial failure is reported per role and
-# returns non-zero; the workers that did come up are left running and registered,
-# so a retry re-uses them rather than orphaning panes.
+# returns non-zero; workers that did start remain recorded only in that run. A new
+# action process receives a new run ID and does not rediscover or adopt them.
 conductor_assemble() {
 	_c_version_gate || return 1
 	local norm
@@ -795,8 +795,10 @@ conductor_teardown() {
 		GUARD_FILE=""
 		# shellcheck disable=SC1090
 		. "$sf"
-		[ -n "$PANE" ] && _c_herdr pane close "$PANE" >/dev/null 2>&1 # only panes we started
-		[ -n "$GUARD_FILE" ] && rm -f "$GUARD_FILE"                   # only guard files we wrote
+		# These paths come from executable recorded state. No live pane identity or
+		# Guard-file provenance is verified before mutation.
+		[ -n "$PANE" ] && _c_herdr pane close "$PANE" >/dev/null 2>&1
+		[ -n "$GUARD_FILE" ] && rm -f "$GUARD_FILE"
 		rm -f "$sf"
 	done
 	# worktrees and branches survive teardown on purpose — `stand-down` keeps work.
