@@ -7,17 +7,21 @@
 # would find nothing here. Nothing is forced and no branch is deleted — a CONFLICT
 # row means that branch was left untouched for a human to merge.
 set -uo pipefail
-cd "${HERDR_PLUGIN_ROOT:-$(dirname "$0")/..}" || { echo "herdr-conductor: cannot resolve plugin root"; exit 1; }
+cd "${HERDR_PLUGIN_ROOT:-$(dirname "$0")/..}" || {
+	echo "herdr-conductor: cannot resolve plugin root"
+	exit 1
+}
 . scripts/lib.sh
 
 if ! conductor_pin_active_run >/dev/null; then
-  echo "herdr-conductor: no active conductor run to harvest."
-  exit 0
+	echo "herdr-conductor: no active conductor run to harvest."
+	exit 0
 fi
 
+# shellcheck disable=SC2119 # action intentionally accepts no positional arguments
 if conductor_reconcile; then
-  echo "herdr-conductor: harvest clean — every writer branch merged."
-  exit 0
+	echo "herdr-conductor: harvest clean — every writer branch merged."
+	exit 0
 fi
 echo "herdr-conductor: harvest incomplete — see the CONFLICT/missing rows above. Branches are untouched."
 exit 1

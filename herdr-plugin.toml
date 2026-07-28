@@ -2,47 +2,47 @@ id = "structupath.conductor"
 name = "Conductor"
 version = "0.1.0"
 min_herdr_version = "0.7.5"
-description = "Orchestrate a feature-delivery team as visible Herdr agent panes — dispatch worker agents, watch a live board, stand down cleanly"
+description = "Attended prototype for role-differentiated Herdr agent panes, report collection, and supervised branch reconciliation"
 platforms = ["macos", "linux"]
 
-# The orchestrating AGENT drives dispatch by sourcing scripts/conductor-lib.sh
-# (the transport, proven on herdr 0.7.5). These actions are the operational surface
-# around a run: stand the team up, watch it, harvest it, stand it down. Plugin
-# actions get no argv/TTY, so dispatch itself stays agent-driven — a team is
+# The orchestrating AGENT drives dispatch by sourcing scripts/conductor-lib.sh.
+# The transport has unit and dry-run coverage; the complete Tier-2 lifecycle has
+# not been live-certified. These actions expose the current attended prototype.
+# Plugin actions get no argv/TTY, so dispatch itself stays agent-driven — a team is
 # declared once in the workspace's .herdr-conductor.json and assembled from there.
 
 [[actions]]
 id = "assemble"
 title = "Assemble the team"
-description = "Stand up every role in the workspace's .herdr-conductor.json — worktrees, guard drops, one agent pane each — then open the board"
+description = "Prepare configured role resources, start one agent pane per role, and open the board; not crash-recoverable"
 command = ["bash", "scripts/assemble.sh"]
 
 [[actions]]
 id = "board"
 title = "Open the Conductor board"
-description = "Live pane: one row per worker (role, kind, pane, state, cwd) for the active run"
+description = "Live pane for the newest global recorded run; confirm displayed cwd because selection is not workspace-scoped"
 command = ["bash", "scripts/board.sh"]
 
 [[actions]]
 id = "status"
 title = "Status of the run"
-description = "One-shot table: role, kind, pane, live agent state, cwd — the board's answer without a pane"
+description = "One-shot table for the newest global recorded run; confirm cwd because selection is not workspace-scoped"
 command = ["bash", "scripts/status.sh"]
 
 [[actions]]
 id = "harvest"
 title = "Harvest the run"
-description = "Merge every writing role's branch into one integration worktree; conflicts are reported, never forced"
+description = "Merge recorded writer branches into an integration worktree without forcing; no report, verdict, or approval gate"
 command = ["bash", "scripts/harvest.sh"]
 
 [[actions]]
 id = "stand-down"
 title = "Stand down the team"
-description = "Close every conductor-owned worker pane for this run; git branches are kept"
+description = "Legacy unsafe teardown: closes recorded pane IDs without live identity verification; do not use on ambiguous state"
 command = ["bash", "scripts/stand-down.sh"]
 
-# Pane title doubles as the cleanup sweep label (pane list reports it as
-# "label") — keep it distinctive so a sweep can never match a user pane.
+# Pane title is used as a global singleton label. The current lookup is not scoped
+# by workspace or run, so the title is a display hint rather than ownership proof.
 
 [[panes]]
 id = "board-pane"

@@ -1,19 +1,29 @@
 # Herdr Conductor — Adapter Spec
 
+> [!CAUTION]
+> **Historical origin record (2026-07-23), not a current contract.** Several
+> proposals below were not implemented or were disproved by later audit,
+> especially Swarm-backed lifecycle, Guard enforcement, ownership-verified
+> teardown, durable recovery, and mode-driven read-only behavior. See the
+> repository [README](../../README.md) for current behavior and safety limits.
+
 **Goal:** an *orchestrating agent* that drives other agents as visible Herdr panes —
 by porting the proven `feature-delivery-team` role model (pi-library) and the
 `lead-agents` Orchestrator→Lead→Worker hierarchy onto Herdr's native agent CLI.
 
-**Status:** design spec, 2026-07-23. Verified against installed **herdr 0.7.5**.
-Sits beside `herdr-plugins-cheatsheet.md`.
+**Historical status:** design spec, 2026-07-23. Its CLI signatures were checked
+against installed Herdr 0.7.5; this is not certification of the current plugin.
 
-> **Built.** Tier 1 shipped (pi-library `feature-delivery-team`, dogfooded
-> 2026-07-23); Tier 2 shipped as this plugin (2026-07-25). Two decisions diverge
+> **Historical implementation note.** Tier 1 shipped (pi-library
+> `feature-delivery-team`, dogfooded 2026-07-23); the initial Tier 2 prototype
+> shipped as this plugin (2026-07-25). “Shipped” here records chronology, not
+> current production readiness or live certification. Two decisions diverge
 > from what's written below — `harvest` is plain-git reconcile rather than a hand-off
 > to `herdr-swarm harvest` (§4), and the team config is JSON rather than YAML (§7 D5).
-> Both are recorded as KTD-8/KTD-9 in
-> `docs/plans/2026-07-23-001-feat-herdr-conductor-adapter-plan.md`, which supersedes
-> this spec wherever they disagree. This document is kept as the origin record.
+> Both are recorded as KTD-8/KTD-9 in the
+> [historical adapter plan](2026-07-23-feature-delivery-adapter-plan.md), which
+> superseded this spec where they disagreed. This document remains an origin
+> record only.
 
 ---
 
@@ -30,7 +40,7 @@ these five verbs.**
 ## 2. What already exists (reuse, don't reinvent)
 
 | Asset | Location | What we take |
-|---|---|---|
+| --- | --- | --- |
 | **Role model** | pi-library `feature-delivery-team/SKILL.md` | 5 roles (builder-engine, builder-ui, test-author, validator, reviewer), ownership table, dispatch prompts, iterate-findings routing, final report shape — verbatim |
 | **Hierarchy + delegation UX** | `lead-agents/.pi/multi-team/multi-team-config.yaml` + `agents/orchestrator.md` | Orchestrator→Lead→Member structure, `delegate(team, question)` semantics, append-only conversation-log JSONL, per-agent color, mental-model expertise files |
 | **Pane+agent bootstrap** | `herdr-swarm/scripts/lib.sh` → `herdr_agent_start()` | The 0.7.4-vs-0.7.5 abstraction: on 0.7.5 it's `pane split` + `pane run` + `report-agent`. **Reuse this helper directly** — it's live-verified. |
@@ -40,7 +50,7 @@ these five verbs.**
 ## 3. The transport swap (the whole spec in one table)
 
 | Concept | `lead-agents` (Pi) | **Herdr Conductor** (verified 0.7.5 verbs) |
-|---|---|---|
+| --- | --- | --- |
 | Orchestrator | Pi session w/ `delegate` tool | Any coding agent (claude/codex/pi) in a Herdr pane, armed with these verbs |
 | Spawn a worker | `delegate(team, q)` → in-proc sub-session | `pane split` → `herdr agent start <name> --kind <kind> --pane <id>` (via swarm's `herdr_agent_start`) |
 | Assign work + block | sub-session returns synchronously | `herdr agent prompt <name> "<mission>" --wait --until idle,done,blocked --timeout <ms>` |
@@ -54,7 +64,7 @@ these five verbs.**
 
 ### Verified verb signatures (herdr 0.7.5)
 
-```
+```text
 herdr agent start <NAME> --kind <pi|claude|codex|gemini|cursor|…> --pane <ID> [--timeout MS] [-- <AGENT_ARG>…]
 herdr agent prompt <TARGET> <TEXT> [--wait] [--until idle|working|blocked|done|unknown]… [--timeout MS]
 herdr agent wait   <TARGET> [--until <STATUS>]… [--timeout MS]     # default matches idle,done,blocked
@@ -78,7 +88,7 @@ Add **Herdr** as a 4th runtime adapter to `feature-delivery-team`. Everything in
 that skill stays; only Step 2's adapter table gains a row and Steps 4–6 gain a
 Herdr dispatch block.
 
-```
+```text
 | Herdr | pane split → agent start --kind; agent prompt --wait; agent read | Each role is a
 |       | visible pane. Builders get worktrees (swarm helper). Validator/reviewer read-only via herdr-guard. |
 ```
@@ -91,7 +101,7 @@ reusing 100% of the role prompts.
 A 4th StructuPath plugin. Actions:
 
 | Action | Does |
-|---|---|
+| --- | --- |
 | `assemble` | Read a team config (port of `multi-team-config.yaml`), open the Conductor pane |
 | `dispatch` | Decompose task → per-role `pane split` + `agent start` + `agent prompt` |
 | `status` | Live board: one row per worker (name, state, pane, worktree, changed-files) — driven by `events.subscribe` |
@@ -130,7 +140,7 @@ verdict=$(herdr agent read validator --source recent-unwrapped --lines 200)
 Your three existing plugins compose into a full orchestration substrate — **each
 does one job it already does well:**
 
-```
+```text
 CONDUCTOR decides   →  SWARM isolates      →  GUARD enforces
 (orchestrator agent)   (worktree per writer)   (validator/reviewer read-only,
                                                  no worker touches forbidden paths)
@@ -145,7 +155,7 @@ rig (`the-verifier-agent-system`).
 ## 7. Decisions to make before building
 
 | # | Question | Default recommendation |
-|---|---|---|
+| --- | --- | --- |
 | D1 | **Depth-1 or depth-2?** lead-agents is Orchestrator→Lead→Member. In Herdr each agent is a full pane/process, so depth-2 = panes spawning panes. | **Depth-1 first** (Orchestrator→Workers = the 5 roles). Add Leads only if a single orchestrator context can't hold coordination. |
 | D2 | **Read-only enforcement.** Herdr can't sandbox FS writes per-agent. | Use **herdr-guard** rules to deny write/commit verbs for validator/reviewer panes. Confirms the 3-plugin composition is load-bearing, not decorative. |
 | D3 | **Worker `--kind`.** Mixed models per role? | builders=claude, validator/reviewer=codex (independent 2nd engine), test-author=claude. Matches your model-routing rules. |
@@ -173,5 +183,5 @@ rig (`the-verifier-agent-system`).
 - Hierarchy/delegation: `~/dev/structupath/Agentic Engineer/lead-agents/.pi/multi-team/{multi-team-config.yaml,agents/orchestrator.md}`
 - Pane+agent bootstrap: `~/dev/structupath/herdr-swarm/scripts/lib.sh` (`herdr_agent_start`)
 - Verbs: `herdr agent {start,prompt,wait,read,list} --help` on 0.7.5 (this machine)
-- Docs: https://herdr.dev/docs/agent-automation/ ("one agent can create work for other agents, inspect their state, and collect their results")
+- Docs: <https://herdr.dev/docs/agent-automation/> ("one agent can create work for other agents, inspect their state, and collect their results")
 - Confirmed: zero herdr references anywhere in `~/dev/structupath/Agentic Engineer/`

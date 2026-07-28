@@ -1,13 +1,18 @@
----
-title: "feat: Herdr runtime adapter for feature-delivery-team (Conductor Tier 1)"
-type: feat
-date: 2026-07-23
-origin: ~/dev/structupath/herdr-conductor-spec.md (design spec + Fable verdict, 2026-07-23)
----
+# Historical Herdr Runtime Adapter Plan (Conductor Tier 1)
 
-# feat: Herdr Runtime Adapter for feature-delivery-team (Conductor Tier 1)
+**Record date:** 2026-07-23
 
-**Target repo:** pi-library (this repo). The spike touches no other repo's code; it reads `herdr-swarm` for patterns only.
+**Origin:** [Herdr Conductor adapter spec](2026-07-23-herdr-conductor-origin-spec.md)
+
+> [!CAUTION]
+> **Historical implementation plan, not a current runtime contract.** It records
+> the 2026-07-23 Tier-1/Tier-2 path and intentionally retains superseded design
+> language. Current Conductor does not provide durable recovery, verified pane
+> ownership, Guard enforcement, mode-driven read-only enforcement, or Swarm-backed
+> lifecycle. See the repository [README](../../README.md) for supported claims.
+
+**Original target repo:** pi-library. The spike touched no other repo's code and
+read `herdr-swarm` for patterns only.
 
 ## Summary
 
@@ -41,12 +46,14 @@ All existing orchestration assets (`feature-delivery-team`, lead-agents, Pi suba
 **In scope:** the spike; the Herdr adapter section of the `feature-delivery-team` skill; a small helper script in the skill dir; one dogfood run; catalog metadata refresh.
 
 ### Deferred to Follow-Up Work
+
 - **Tier 2 `herdr-conductor` plugin** (assemble/dispatch/status/harvest actions, lead-agents-style team config) — gated on Tier-1 dogfood verdict.
 - Event-driven control loop via `herdr api events.subscribe` (polling `agent wait` is sufficient for Tier 1).
 - Worktree-per-builder integration with swarm's fanout (Tier 1 uses plain git worktrees + `git merge` per KTD-7; full swarm harvest integration is Tier 2).
 - Guard v2 harness-reporter hooks.
 
 ### Outside this work's identity
+
 - Replacing Pi subagents / Claude Code Agent tool for quick, unattended feature teams.
 - Windows support (both sibling plugins are macos/linux; herdr has documented Windows plugin defects).
 
@@ -93,6 +100,7 @@ State-detection reliability of the `wait` edge is the load-bearing unknown — U
 **Files:** `docs/spikes/2026-07-23-herdr-conductor/` (evidence captures, one file per lettered scenario, swarm `spike-out/` convention); `docs/spikes/2026-07-23-herdr-conductor/RESULTS.md` (verdict table).
 **Approach:** throwaway git repo in scratch space; drive everything from a script inside a live herdr session (the script splits an existing pane — it is not headless), capture raw CLI output. Scenarios, run per kind across **claude, codex, and pi** (all three advertised runtimes): (a) `pane split --cwd` + `agent start --kind <kind>` — readiness gate behavior, failure mode on busy pane; (b) pointer-prompt + task-file delivery — verify the worker actually reads the file; (c) **reliability loop, split by regime** — (c1) 15× short prompt→`agent wait --until idle --until done --until blocked` cycles per kind (`--until` is repeat-to-add on 0.7.5; the comma form exits 2), and (c2) 5× long-running tasks per kind (multi-minute, ≥1 tool call each, e.g. "run the test suite then summarize"), recording misdetections, early-settles, stalls, and wall-time; (d) report round-trip — worker writes `.conductor/report.md` with the `<!-- REPORT-COMPLETE -->` sentinel, conductor reads it; (d2) settle-without-report — pointer-prompt an *ambiguous* task, confirm the no-report settle is observable and distinguishable from completion; (e) role launch flags honored **and role job still runs** — reviewer under full read-only refuses a write; validator under scoped `workspace-write` completes an actual `pytest`/`pnpm test` run in its worktree; (f) teardown — `pane close` stops the agent, no orphan daemons.
 **Test scenarios:**
+
 - Happy path: (c1) ≥ 14/15 clean settle detections per kind; (c2) **zero early-settles** per kind (idle must not fire mid-turn); (d) report present with sentinel after settle.
 - Edge: `agent start` into a pane running a foreground command → expect refusal, capture error shape (machine-detectable code, not message text).
 - Error: `agent wait` with 5s timeout on a busy worker → confirm timeout error code, no zombie state.
@@ -107,6 +115,7 @@ State-detection reliability of the `wait` edge is the load-bearing unknown — U
 **Files:** `skills/feature-delivery-team/scripts/conductor-lib.sh`; `tests/test_conductor_lib.py` (subprocess smoke tests of arg validation and dry-run output, following existing `tests/` conventions).
 **Approach:** functions: `conductor_start_worker <role> <kind> <cwd> [-- extra argv]` (split + start + readiness handling), `conductor_dispatch <role> <task-file>` (**archive any existing `.conductor/report.md` to `report.prev.md` before** writing the pointer prompt, and stamp a dispatch timestamp), `conductor_await <role> <timeout-ms>`, `conductor_collect <role>` (read report file; **hard-fail when report.md is absent, empty, lacks the `<!-- REPORT-COMPLETE -->` sentinel, or has an mtime predating the dispatch stamp** — a stale prior-run report must never read as a fresh result; on hard-fail, run the one-reprompt-then-escalate path from KTD-4), `conductor_teardown` (pane-close sweep by conductor-owned label, ownership-verified). Version gate ≥ 0.7.5; own state under `~/.local/state/herdr-conductor/` (never swarm's namespace); slug-safe role names enforced at entry. macOS bash 3.2 compatible, matching sibling repos.
 **Test scenarios:**
+
 - Happy path: dry-run mode emits the exact herdr command sequence for a two-worker dispatch.
 - Edge: role name with illegal chars → hard error before any herdr call.
 - Edge: missing `--cwd` dir → hard error (mirrors swarm's contract).
@@ -140,7 +149,7 @@ State-detection reliability of the `wait` edge is the load-bearing unknown — U
 ## Risks & Dependencies
 
 | Risk | Treatment |
-|---|---|
+| --- | --- |
 | State detection unreliable for some kind (zero prior evidence) | U1 measures it per kind, split by regime; hard gate (≥14/15 short + zero early-settle on long tasks); NO-GO halts downstream (pi-only NO-GO downgrades kinds) |
 | Worker settles "idle" without completing work (chatty clarification, refusal) | Report sentinel is the completion signal, not settle state; one re-prompt then escalate (KTD-4); spike (d2) confirms the no-report settle is observable |
 | Stale prior-run report harvested as fresh success | `conductor_dispatch` archives old report + stamps time; `conductor_collect` rejects sentinel-less or pre-dispatch-mtime reports (KTD-2, U2) |
@@ -159,7 +168,7 @@ State-detection reliability of the `wait` edge is the load-bearing unknown — U
 ## Sources & Research
 
 - `herdr agent {start,prompt,wait,read} --help`, herdr 0.7.5, this machine (verbs + whitelist + wait semantics)
-- https://herdr.dev/docs/agent-automation/ (pattern blessed upstream)
+- <https://herdr.dev/docs/agent-automation/> (pattern blessed upstream)
 - herdr-swarm `docs/solutions/` + `spike-out/` (lifecycle gotchas, prompt-channel precedent, invariant-drift learning) — learnings sweep 2026-07-23
 - herdr-guard `docs/SPEC.md` (honest capability model; two-level rule scoping)
 - Origin spec + Fable verdict: `~/dev/structupath/herdr-conductor-spec.md`
@@ -199,7 +208,7 @@ the origin spec and are recorded here in the KTD-1 style.
 ### What Tier 2 shipped
 
 | Spec §4 action | Status |
-|---|---|
+| --- | --- |
 | `assemble` | Built — config → worktrees → guard drops → one agent pane per role → board |
 | `dispatch` | Deliberately **not** an action (actions get no argv/TTY). Declarative instead: `conductor_render_role` renders a role template into a dispatchable task file |
 | `status` | Built — live board pane, plus a one-shot `status` action |
