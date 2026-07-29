@@ -1,0 +1,165 @@
+{
+  "probe": "conductor-stage1-b0-live-identity-capability",
+  "observed_at": "2026-07-28",
+  "stage0_base": "171f8a0a89b0d67a7c3181e1ac3a5c1522c218f6",
+  "herdr": {
+    "version": "0.7.5",
+    "protocol": 17,
+    "schema_version": 1,
+    "api_schema_sha256": "1ef4eb9ec655cb0c89726895f437d8654bdde13a22e591fda06a9015d03d88c7"
+  },
+  "probe_environment": {
+    "workspace": "disposable",
+    "repository": "temporary Git repository",
+    "agent_kind": "pi",
+    "agent_name": "conductor-b0-probe",
+    "cleanup": "workspace closed; probe pane and agent absent afterward"
+  },
+  "required_identity": [
+    {
+      "identity": "workspace_id",
+      "plugin_context_source": "HERDR_PLUGIN_CONTEXT_JSON.workspace_id",
+      "live_sources": [
+        "pane.get.result.pane.workspace_id",
+        "agent.get.result.agent.workspace_id"
+      ],
+      "status": "available"
+    },
+    {
+      "identity": "pane_id",
+      "plugin_context_source": "HERDR_PLUGIN_CONTEXT_JSON.focused_pane_id",
+      "live_sources": [
+        "pane.get.result.pane.pane_id",
+        "agent.get.result.agent.pane_id"
+      ],
+      "status": "available"
+    },
+    {
+      "identity": "terminal_identity",
+      "live_sources": [
+        "pane.get.result.pane.terminal_id",
+        "agent.get.result.agent.terminal_id"
+      ],
+      "supplementary_source": "pane.process_info.result.process_info",
+      "status": "available",
+      "limitation": "The live macOS process response omitted optional tty; terminal_id is the required terminal identity."
+    },
+    {
+      "identity": "agent_session",
+      "live_sources": [
+        "pane.get.result.pane.agent_session",
+        "agent.get.result.agent.agent_session"
+      ],
+      "observed_shape": {
+        "agent": "pi",
+        "kind": "path",
+        "source": "herdr:pi",
+        "value": "redacted disposable session path"
+      },
+      "status": "available"
+    },
+    {
+      "identity": "agent_name",
+      "live_sources": [
+        "agent.get.result.agent.name",
+        "agent.list.result.agents[].name"
+      ],
+      "status": "available",
+      "limitation": "The field is present for an explicitly named agent started by Herdr; it is absent on unnamed detected agents."
+    },
+    {
+      "identity": "canonical_cwd",
+      "plugin_context_source": "HERDR_PLUGIN_CONTEXT_JSON.workspace_cwd",
+      "live_sources": [
+        "pane.get.result.pane.cwd",
+        "pane.get.result.pane.foreground_cwd",
+        "agent.get.result.agent.cwd",
+        "agent.get.result.agent.foreground_cwd"
+      ],
+      "normalization": "realpath plus Git worktree/common-directory checks in Stage 1",
+      "status": "available"
+    },
+    {
+      "identity": "run_id",
+      "live_sources": [
+        "pane.get.result.pane.tokens.conductor_run_id",
+        "agent.get.result.agent.tokens.conductor_run_id"
+      ],
+      "publication_source": "pane.report-metadata --source structupath.conductor --token conductor_run_id=<id>",
+      "status": "available_when_published_and_read_back"
+    },
+    {
+      "identity": "resource_generation",
+      "live_sources": [
+        "pane.get.result.pane.tokens.conductor_generation",
+        "agent.get.result.agent.tokens.conductor_generation"
+      ],
+      "publication_source": "pane.report-metadata --source structupath.conductor --token conductor_generation=<generation>",
+      "status": "available_when_published_and_read_back",
+      "limitation": "pane.revision changed from 1 to 6 during ordinary pane/agent activity and is not a stable resource generation."
+    }
+  ],
+  "metadata_sequence_probe": {
+    "initial_seq": 1,
+    "stale_seq": 0,
+    "stale_command_exit": 0,
+    "stale_value_replaced_current_value": false,
+    "requirement": "After every metadata report, read back and compare both tokens; command success alone is insufficient."
+  },
+  "negative_fixtures": {
+    "fixture_path": "docs/evidence/fixtures/2026-07-28-herdr-0.7.5-identity-fixtures.json",
+    "fixture_sha256": "7f56a6ac8342144fde712e3c0b0a1c00ef5fbb38df53b90984d3622e843fdffb",
+    "classifier_path": "scripts/check-b0-identity-evidence.mjs",
+    "result_path": "docs/evidence/2026-07-28-herdr-0.7.5-negative-fixture-results.json",
+    "total": 32,
+    "eligible": 1,
+    "refused": 31,
+    "negative_mutation_attempts": 0,
+    "positive_control_mutation_attempts": 3,
+    "classifications": [
+      "ambiguous",
+      "capability_unavailable",
+      "foreign_or_stale"
+    ],
+    "cases": [
+      "duplicate pane and duplicate agent",
+      "missing pane workspace/pane/terminal/cwd/foreground-cwd/session/run/generation",
+      "missing agent name/workspace/pane/terminal/cwd/foreground-cwd/session/run/generation",
+      "mismatched terminal/workspace/cwd/pane/name/session/run/generation",
+      "malformed terminal/name/session/generation"
+    ]
+  },
+  "structured_absence": {
+    "missing_pane": "pane_not_found",
+    "missing_agent": "agent_not_found",
+    "post_cleanup_pane_exit": 1,
+    "post_cleanup_agent_exit": 1
+  },
+  "close_api": {
+    "method": "pane.close",
+    "parameters": [
+      "pane_id"
+    ],
+    "conditional_identity_parameters": [],
+    "limitation": "Herdr 0.7.5 has no conditional close parameter for terminal, session, revision, run, or generation; Stage 1 must re-read immediately before close and still document the same-user TOCTOU boundary."
+  },
+  "decision": {
+    "stage1_b1": "conditional_go",
+    "pane_close": "disabled_until_b3_identity_kernel_and_negative_mutation_tests",
+    "conditions": [
+      "Never derive identity from CONDUCTOR_REPO, ambient cwd, newest-global state, names alone, recorded pane IDs alone, or pane.revision.",
+      "Publish unpredictable run and generation tokens, then read them back from both pane and agent views before considering a resource eligible.",
+      "Require exactly one pane and one named agent plus exact workspace, pane, terminal, session, canonical cwd, run, and generation equality.",
+      "Any missing, duplicate, malformed, foreign, or stale field returns capability_unavailable or ambiguous with no close, remove, or merge.",
+      "Re-read the complete tuple immediately before pane.close; no available Herdr 0.7.5 API makes close conditional on that tuple."
+    ]
+  },
+  "program_holds": {
+    "browser_promotion": "held"
+  },
+  "raw_evidence": {
+    "local_directory": "/tmp/herdr-conductor-b0/run-Y8dUE6",
+    "sha256_manifest_sha256": "48ea064cf95ac95db1603f2ce64d1b2b5d23a4e7ccb7e8a75e2cd3075bcc6812",
+    "note": "The committed artifact is curated and excludes full agent listings, pane output, environment contents, and transcript contents."
+  }
+}

@@ -12,14 +12,20 @@ const requiredFiles = [
 	"package.json",
 	"herdr-plugin.toml",
 	"README.md",
+	"SECURITY.md",
+	"docs/private-state-v1.md",
 	"docs/herdr-plugins-cheatsheet.md",
 	"docs/history/README.md",
 	"docs/history/2026-07-23-herdr-conductor-origin-spec.md",
 	"docs/history/2026-07-23-feature-delivery-adapter-plan.md",
 	"roles/reviewer.md",
 	"roles/validator.md",
-	"scripts/conductor-lib.sh",
-	"tests/conductor-lib.test.mjs",
+	...fs
+		.readdirSync(path.join(root, "tests"))
+		.filter((name) => /^stage1-runtime-.*\.test\.mjs$/.test(name))
+		.map((name) => `tests/${name}`),
+	"tests/private-state-schema.test.mjs",
+	"tests/state-kernel.test.mjs",
 ];
 
 after(() => {
@@ -38,8 +44,24 @@ function fixture() {
 	return base;
 }
 
-test("repository documentation passes the Stage 0 claim contract", () => {
+test("repository documentation passes the Stage 1 B3/B4 claim contract", () => {
 	assert.deepEqual(validateDocs(root).errors, []);
+});
+
+test("documentation validation rejects broad or newer Herdr support claims", () => {
+	for (const claim of ["Herdr `>=0.7.5`", "Herdr 0.7.6 or newer"]) {
+		const repository = fixture();
+		const readmePath = path.join(repository, "README.md");
+		const readme = fs
+			.readFileSync(readmePath, "utf8")
+			.replace("Herdr exactly `0.7.5`", claim);
+		fs.writeFileSync(readmePath, readme);
+		const { errors } = validateDocs(repository);
+		assert.ok(
+			errors.some((error) => error.includes("exactly Herdr 0.7.5")),
+			errors.join("\n"),
+		);
+	}
 });
 
 test("documentation validation requires README and manifest actions to agree", () => {
@@ -59,6 +81,30 @@ test("documentation validation requires README and manifest actions to agree", (
 	);
 });
 
+test("documentation validation rejects nonexistent canonical test paths", () => {
+	for (const relative of ["README.md", "docs/private-state-v1.md"]) {
+		const repository = fixture();
+		const documentPath = path.join(repository, relative);
+		const content = fs
+			.readFileSync(documentPath, "utf8")
+			.replace(
+				"tests/stage1-runtime-*.test.mjs",
+				"tests/stage1-runtime-missing.test.mjs",
+			);
+		fs.writeFileSync(documentPath, content);
+
+		const { errors } = validateDocs(repository);
+		assert.ok(
+			errors.some((error) =>
+				error.includes(
+					`${relative} canonical test command references nonexistent path: tests/stage1-runtime-missing.test.mjs`,
+				),
+			),
+			errors.join("\n"),
+		);
+	}
+});
+
 test("documentation validation rejects retired behavior claims in current docs", () => {
 	const repository = fixture();
 	fs.appendFileSync(
@@ -73,41 +119,6 @@ test("documentation validation rejects retired behavior claims in current docs",
 	);
 });
 
-test("documentation validation scans source and test comments for retired claims", () => {
-	const regressions = [
-		[
-			"scripts/conductor-lib.sh",
-			"\n# Retry re-uses workers rather than orphaning panes.\n",
-			"cross-process worker recovery",
-		],
-		[
-			"scripts/conductor-lib.sh",
-			"\n# Close only panes Conductor started.\n",
-			"unverified recorded pane ownership",
-		],
-		[
-			"scripts/conductor-lib.sh",
-			"\n# pi-library vendors a byte-identical duplicate.\n",
-			"byte-identical vendoring",
-		],
-		[
-			"tests/conductor-lib.test.mjs",
-			"\n// Mode controls isolation and enforcement.\n",
-			"mode-enforced isolation",
-		],
-	];
-
-	for (const [relative, claim, label] of regressions) {
-		const repository = fixture();
-		fs.appendFileSync(path.join(repository, relative), claim);
-		const { errors } = validateDocs(repository);
-		assert.ok(
-			errors.some((error) => error.includes(label)),
-			`${relative}: ${errors.join("\n")}`,
-		);
-	}
-});
-
 test("documentation validation requires both roles to fail closed on integration SHA mismatch", () => {
 	for (const relative of ["roles/reviewer.md", "roles/validator.md"]) {
 		const repository = fixture();
@@ -120,7 +131,9 @@ test("documentation validation requires both roles to fail closed on integration
 		const { errors } = validateDocs(repository);
 		assert.ok(
 			errors.some((error) =>
-				error.includes(`${relative} must retain safety boundary text: git rev-parse HEAD`),
+				error.includes(
+					`${relative} must retain safety boundary text: git rev-parse HEAD`,
+				),
 			),
 			errors.join("\n"),
 		);

@@ -1,0 +1,333 @@
+{
+  "probe_kind": "conductor-b0-negative-identity-fixtures",
+  "fixture_sha256": "7f56a6ac8342144fde712e3c0b0a1c00ef5fbb38df53b90984d3622e843fdffb",
+  "cases": [
+    {
+      "name": "exact_match",
+      "expected": "eligible",
+      "actual": "eligible",
+      "mutation_attempts": {
+        "pane_close": 1,
+        "worktree_remove": 1,
+        "branch_merge": 1
+      }
+    },
+    {
+      "name": "duplicate_pane",
+      "expected": "ambiguous",
+      "actual": "ambiguous",
+      "mutation_attempts": {
+        "pane_close": 0,
+        "worktree_remove": 0,
+        "branch_merge": 0
+      }
+    },
+    {
+      "name": "duplicate_agent",
+      "expected": "ambiguous",
+      "actual": "ambiguous",
+      "mutation_attempts": {
+        "pane_close": 0,
+        "worktree_remove": 0,
+        "branch_merge": 0
+      }
+    },
+    {
+      "name": "missing_pane_workspace_id",
+      "expected": "capability_unavailable",
+      "actual": "capability_unavailable",
+      "mutation_attempts": {
+        "pane_close": 0,
+        "worktree_remove": 0,
+        "branch_merge": 0
+      }
+    },
+    {
+      "name": "missing_pane_pane_id",
+      "expected": "capability_unavailable",
+      "actual": "capability_unavailable",
+      "mutation_attempts": {
+        "pane_close": 0,
+        "worktree_remove": 0,
+        "branch_merge": 0
+      }
+    },
+    {
+      "name": "missing_pane_terminal_id",
+      "expected": "capability_unavailable",
+      "actual": "capability_unavailable",
+      "mutation_attempts": {
+        "pane_close": 0,
+        "worktree_remove": 0,
+        "branch_merge": 0
+      }
+    },
+    {
+      "name": "missing_pane_cwd",
+      "expected": "capability_unavailable",
+      "actual": "capability_unavailable",
+      "mutation_attempts": {
+        "pane_close": 0,
+        "worktree_remove": 0,
+        "branch_merge": 0
+      }
+    },
+    {
+      "name": "missing_pane_foreground_cwd",
+      "expected": "capability_unavailable",
+      "actual": "capability_unavailable",
+      "mutation_attempts": {
+        "pane_close": 0,
+        "worktree_remove": 0,
+        "branch_merge": 0
+      }
+    },
+    {
+      "name": "missing_pane_agent_session",
+      "expected": "capability_unavailable",
+      "actual": "capability_unavailable",
+      "mutation_attempts": {
+        "pane_close": 0,
+        "worktree_remove": 0,
+        "branch_merge": 0
+      }
+    },
+    {
+      "name": "missing_pane_run_id",
+      "expected": "capability_unavailable",
+      "actual": "capability_unavailable",
+      "mutation_attempts": {
+        "pane_close": 0,
+        "worktree_remove": 0,
+        "branch_merge": 0
+      }
+    },
+    {
+      "name": "missing_pane_generation",
+      "expected": "capability_unavailable",
+      "actual": "capability_unavailable",
+      "mutation_attempts": {
+        "pane_close": 0,
+        "worktree_remove": 0,
+        "branch_merge": 0
+      }
+    },
+    {
+      "name": "missing_agent_name",
+      "expected": "capability_unavailable",
+      "actual": "capability_unavailable",
+      "mutation_attempts": {
+        "pane_close": 0,
+        "worktree_remove": 0,
+        "branch_merge": 0
+      }
+    },
+    {
+      "name": "missing_agent_workspace_id",
+      "expected": "capability_unavailable",
+      "actual": "capability_unavailable",
+      "mutation_attempts": {
+        "pane_close": 0,
+        "worktree_remove": 0,
+        "branch_merge": 0
+      }
+    },
+    {
+      "name": "missing_agent_pane_id",
+      "expected": "capability_unavailable",
+      "actual": "capability_unavailable",
+      "mutation_attempts": {
+        "pane_close": 0,
+        "worktree_remove": 0,
+        "branch_merge": 0
+      }
+    },
+    {
+      "name": "missing_agent_terminal_id",
+      "expected": "capability_unavailable",
+      "actual": "capability_unavailable",
+      "mutation_attempts": {
+        "pane_close": 0,
+        "worktree_remove": 0,
+        "branch_merge": 0
+      }
+    },
+    {
+      "name": "missing_agent_cwd",
+      "expected": "capability_unavailable",
+      "actual": "capability_unavailable",
+      "mutation_attempts": {
+        "pane_close": 0,
+        "worktree_remove": 0,
+        "branch_merge": 0
+      }
+    },
+    {
+      "name": "missing_agent_foreground_cwd",
+      "expected": "capability_unavailable",
+      "actual": "capability_unavailable",
+      "mutation_attempts": {
+        "pane_close": 0,
+        "worktree_remove": 0,
+        "branch_merge": 0
+      }
+    },
+    {
+      "name": "missing_agent_session",
+      "expected": "capability_unavailable",
+      "actual": "capability_unavailable",
+      "mutation_attempts": {
+        "pane_close": 0,
+        "worktree_remove": 0,
+        "branch_merge": 0
+      }
+    },
+    {
+      "name": "missing_agent_run_id",
+      "expected": "capability_unavailable",
+      "actual": "capability_unavailable",
+      "mutation_attempts": {
+        "pane_close": 0,
+        "worktree_remove": 0,
+        "branch_merge": 0
+      }
+    },
+    {
+      "name": "missing_agent_generation",
+      "expected": "capability_unavailable",
+      "actual": "capability_unavailable",
+      "mutation_attempts": {
+        "pane_close": 0,
+        "worktree_remove": 0,
+        "branch_merge": 0
+      }
+    },
+    {
+      "name": "mismatch_pane_terminal_id",
+      "expected": "foreign_or_stale",
+      "actual": "foreign_or_stale",
+      "mutation_attempts": {
+        "pane_close": 0,
+        "worktree_remove": 0,
+        "branch_merge": 0
+      }
+    },
+    {
+      "name": "mismatch_pane_workspace_id",
+      "expected": "foreign_or_stale",
+      "actual": "foreign_or_stale",
+      "mutation_attempts": {
+        "pane_close": 0,
+        "worktree_remove": 0,
+        "branch_merge": 0
+      }
+    },
+    {
+      "name": "mismatch_pane_cwd",
+      "expected": "foreign_or_stale",
+      "actual": "foreign_or_stale",
+      "mutation_attempts": {
+        "pane_close": 0,
+        "worktree_remove": 0,
+        "branch_merge": 0
+      }
+    },
+    {
+      "name": "mismatch_agent_pane_id",
+      "expected": "foreign_or_stale",
+      "actual": "foreign_or_stale",
+      "mutation_attempts": {
+        "pane_close": 0,
+        "worktree_remove": 0,
+        "branch_merge": 0
+      }
+    },
+    {
+      "name": "mismatch_agent_name",
+      "expected": "foreign_or_stale",
+      "actual": "foreign_or_stale",
+      "mutation_attempts": {
+        "pane_close": 0,
+        "worktree_remove": 0,
+        "branch_merge": 0
+      }
+    },
+    {
+      "name": "mismatch_agent_session",
+      "expected": "foreign_or_stale",
+      "actual": "foreign_or_stale",
+      "mutation_attempts": {
+        "pane_close": 0,
+        "worktree_remove": 0,
+        "branch_merge": 0
+      }
+    },
+    {
+      "name": "mismatch_generation",
+      "expected": "foreign_or_stale",
+      "actual": "foreign_or_stale",
+      "mutation_attempts": {
+        "pane_close": 0,
+        "worktree_remove": 0,
+        "branch_merge": 0
+      }
+    },
+    {
+      "name": "mismatch_run_id",
+      "expected": "foreign_or_stale",
+      "actual": "foreign_or_stale",
+      "mutation_attempts": {
+        "pane_close": 0,
+        "worktree_remove": 0,
+        "branch_merge": 0
+      }
+    },
+    {
+      "name": "malformed_pane_terminal_id",
+      "expected": "capability_unavailable",
+      "actual": "capability_unavailable",
+      "mutation_attempts": {
+        "pane_close": 0,
+        "worktree_remove": 0,
+        "branch_merge": 0
+      }
+    },
+    {
+      "name": "malformed_agent_name",
+      "expected": "capability_unavailable",
+      "actual": "capability_unavailable",
+      "mutation_attempts": {
+        "pane_close": 0,
+        "worktree_remove": 0,
+        "branch_merge": 0
+      }
+    },
+    {
+      "name": "malformed_agent_session",
+      "expected": "capability_unavailable",
+      "actual": "capability_unavailable",
+      "mutation_attempts": {
+        "pane_close": 0,
+        "worktree_remove": 0,
+        "branch_merge": 0
+      }
+    },
+    {
+      "name": "malformed_generation",
+      "expected": "capability_unavailable",
+      "actual": "capability_unavailable",
+      "mutation_attempts": {
+        "pane_close": 0,
+        "worktree_remove": 0,
+        "branch_merge": 0
+      }
+    }
+  ],
+  "summary": {
+    "total": 32,
+    "eligible": 1,
+    "refused": 31,
+    "negative_mutation_attempts": 0,
+    "positive_control_mutation_attempts": 3
+  }
+}

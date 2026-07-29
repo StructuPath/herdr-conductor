@@ -1,0 +1,93 @@
+{
+  "probe_kind": "conductor-b0-negative-identity-fixtures",
+  "baseline": {
+    "expected_identity": {
+      "workspace_id": "wB0",
+      "pane_id": "wB0:p1",
+      "terminal_id": "term_b0",
+      "agent_name": "conductor-b0-probe",
+      "agent_session": {
+        "agent": "pi",
+        "kind": "path",
+        "source": "herdr:pi",
+        "value": "/evidence/session/conductor-b0-probe.jsonl"
+      },
+      "canonical_cwd": "/evidence/repo",
+      "run_id": "b0-run",
+      "generation": "b0-generation"
+    },
+    "pane": {
+      "workspace_id": "wB0",
+      "pane_id": "wB0:p1",
+      "terminal_id": "term_b0",
+      "cwd": "/evidence/repo",
+      "foreground_cwd": "/evidence/repo",
+      "agent_session": {
+        "agent": "pi",
+        "kind": "path",
+        "source": "herdr:pi",
+        "value": "/evidence/session/conductor-b0-probe.jsonl"
+      },
+      "tokens": {
+        "conductor_run_id": "b0-run",
+        "conductor_generation": "b0-generation"
+      }
+    },
+    "agent": {
+      "name": "conductor-b0-probe",
+      "workspace_id": "wB0",
+      "pane_id": "wB0:p1",
+      "terminal_id": "term_b0",
+      "cwd": "/evidence/repo",
+      "foreground_cwd": "/evidence/repo",
+      "agent_session": {
+        "agent": "pi",
+        "kind": "path",
+        "source": "herdr:pi",
+        "value": "/evidence/session/conductor-b0-probe.jsonl"
+      },
+      "tokens": {
+        "conductor_run_id": "b0-run",
+        "conductor_generation": "b0-generation"
+      }
+    }
+  },
+  "cases": [
+    { "name": "exact_match", "expected_result": "eligible" },
+    { "name": "duplicate_pane", "expected_result": "ambiguous", "mutations": { "pane_count": 2 } },
+    { "name": "duplicate_agent", "expected_result": "ambiguous", "mutations": { "agent_count": 2 } },
+
+    { "name": "missing_pane_workspace_id", "expected_result": "capability_unavailable", "mutations": { "delete": ["pane.workspace_id"] } },
+    { "name": "missing_pane_pane_id", "expected_result": "capability_unavailable", "mutations": { "delete": ["pane.pane_id"] } },
+    { "name": "missing_pane_terminal_id", "expected_result": "capability_unavailable", "mutations": { "delete": ["pane.terminal_id"] } },
+    { "name": "missing_pane_cwd", "expected_result": "capability_unavailable", "mutations": { "delete": ["pane.cwd"] } },
+    { "name": "missing_pane_foreground_cwd", "expected_result": "capability_unavailable", "mutations": { "delete": ["pane.foreground_cwd"] } },
+    { "name": "missing_pane_agent_session", "expected_result": "capability_unavailable", "mutations": { "delete": ["pane.agent_session"] } },
+    { "name": "missing_pane_run_id", "expected_result": "capability_unavailable", "mutations": { "delete": ["pane.tokens.conductor_run_id"] } },
+    { "name": "missing_pane_generation", "expected_result": "capability_unavailable", "mutations": { "delete": ["pane.tokens.conductor_generation"] } },
+
+    { "name": "missing_agent_name", "expected_result": "capability_unavailable", "mutations": { "delete": ["agent.name"] } },
+    { "name": "missing_agent_workspace_id", "expected_result": "capability_unavailable", "mutations": { "delete": ["agent.workspace_id"] } },
+    { "name": "missing_agent_pane_id", "expected_result": "capability_unavailable", "mutations": { "delete": ["agent.pane_id"] } },
+    { "name": "missing_agent_terminal_id", "expected_result": "capability_unavailable", "mutations": { "delete": ["agent.terminal_id"] } },
+    { "name": "missing_agent_cwd", "expected_result": "capability_unavailable", "mutations": { "delete": ["agent.cwd"] } },
+    { "name": "missing_agent_foreground_cwd", "expected_result": "capability_unavailable", "mutations": { "delete": ["agent.foreground_cwd"] } },
+    { "name": "missing_agent_session", "expected_result": "capability_unavailable", "mutations": { "delete": ["agent.agent_session"] } },
+    { "name": "missing_agent_run_id", "expected_result": "capability_unavailable", "mutations": { "delete": ["agent.tokens.conductor_run_id"] } },
+    { "name": "missing_agent_generation", "expected_result": "capability_unavailable", "mutations": { "delete": ["agent.tokens.conductor_generation"] } },
+
+    { "name": "mismatch_pane_terminal_id", "expected_result": "foreign_or_stale", "mutations": { "set": { "pane.terminal_id": "foreign" } } },
+    { "name": "mismatch_pane_workspace_id", "expected_result": "foreign_or_stale", "mutations": { "set": { "pane.workspace_id": "foreign" } } },
+    { "name": "mismatch_pane_cwd", "expected_result": "foreign_or_stale", "mutations": { "set": { "pane.cwd": "/foreign" } } },
+    { "name": "mismatch_agent_pane_id", "expected_result": "foreign_or_stale", "mutations": { "set": { "agent.pane_id": "foreign" } } },
+    { "name": "mismatch_agent_name", "expected_result": "foreign_or_stale", "mutations": { "set": { "agent.name": "foreign" } } },
+    { "name": "mismatch_agent_session", "expected_result": "foreign_or_stale", "mutations": { "set": { "agent.agent_session.value": "/foreign/session.jsonl" } } },
+    { "name": "mismatch_generation", "expected_result": "foreign_or_stale", "mutations": { "set": { "pane.tokens.conductor_generation": "foreign" } } },
+    { "name": "mismatch_run_id", "expected_result": "foreign_or_stale", "mutations": { "set": { "pane.tokens.conductor_run_id": "foreign" } } },
+
+    { "name": "malformed_pane_terminal_id", "expected_result": "capability_unavailable", "mutations": { "set": { "pane.terminal_id": "" } } },
+    { "name": "malformed_agent_name", "expected_result": "capability_unavailable", "mutations": { "set": { "agent.name": "" } } },
+    { "name": "malformed_agent_session", "expected_result": "capability_unavailable", "mutations": { "set": { "agent.agent_session.value": "" } } },
+    { "name": "malformed_generation", "expected_result": "capability_unavailable", "mutations": { "set": { "agent.tokens.conductor_generation": 7 } } }
+  ]
+}
