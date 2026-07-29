@@ -1,48 +1,46 @@
 id = "structupath.conductor"
 name = "Conductor"
-version = "0.1.0"
+version = "0.2.0"
 min_herdr_version = "0.7.5"
-description = "Attended prototype for role-differentiated Herdr agent panes, report collection, and supervised branch reconciliation"
+description = "Stage 1 attended operations with strict context-bound assembly, identity-checked reconciliation, and archival pane close"
 platforms = ["macos", "linux"]
 
-# The orchestrating AGENT drives dispatch by sourcing scripts/conductor-lib.sh.
-# The transport has unit and dry-run coverage; the complete Tier-2 lifecycle has
-# not been live-certified. These actions expose the current attended prototype.
-# Plugin actions get no argv/TTY, so dispatch itself stays agent-driven — a team is
-# declared once in the workspace's .herdr-conductor.json and assembled from there.
+# Stage 1 B4-verified actions use one strict context-bound JSON authority. Dispatch/report,
+# suite adapter, and approval contracts remain held for Stage 2+. Plugin actions receive no argv/TTY, so the team is declared in
+# the invoking repository's .herdr-conductor.json.
 
 [[actions]]
 id = "assemble"
 title = "Assemble the team"
-description = "Prepare configured role resources, start one agent pane per role, and open the board; not crash-recoverable"
+description = "Create a strict context-bound run from one fixed fork, wait through explicit pane-busy refusal, and journal exact role worktree, pane, and agent identity"
 command = ["bash", "scripts/assemble.sh"]
 
 [[actions]]
 id = "board"
-title = "Open the Conductor board"
-description = "Live pane for the newest global recorded run; confirm displayed cwd because selection is not workspace-scoped"
+title = "Snapshot Conductor status"
+description = "Print one live JSON status snapshot for the invoking repository and Herdr workspace only"
 command = ["bash", "scripts/board.sh"]
 
 [[actions]]
 id = "status"
 title = "Status of the run"
-description = "One-shot table for the newest global recorded run; confirm cwd because selection is not workspace-scoped"
+description = "Print context-bound live status after comparing exact recorded and observed agent identity"
 command = ["bash", "scripts/status.sh"]
 
 [[actions]]
 id = "harvest"
 title = "Harvest the run"
-description = "Merge recorded writer branches into an integration worktree without forcing; no report, verdict, or approval gate"
+description = "Attended reconcile after live source and integration-target Git identity checks under one repository lock"
 command = ["bash", "scripts/harvest.sh"]
 
 [[actions]]
 id = "stand-down"
 title = "Stand down the team"
-description = "Legacy unsafe teardown: closes recorded pane IDs without live identity verification; do not use on ambiguous state"
+description = "Archive strict state and close only panes matching the full live recorded identity tuple"
 command = ["bash", "scripts/stand-down.sh"]
 
-# Pane title is used as a global singleton label. The current lookup is not scoped
-# by workspace or run, so the title is a display hint rather than ownership proof.
+# The pane entrypoint is a passive strict-state renderer. The board action does
+# not open or focus panes because that mutation is held until identity is journaled.
 
 [[panes]]
 id = "board-pane"

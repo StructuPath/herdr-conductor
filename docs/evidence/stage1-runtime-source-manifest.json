@@ -1,0 +1,98 @@
+{
+  "document_type": "herdr-conductor-stage1-runtime-source-manifest",
+  "files": [
+    {
+      "path": "scripts/run-stage1-live-smoke.mjs",
+      "sha256": "d503371e884d84116f039ee12852aaab3950cd8814f3396b004b903a566ec605"
+    },
+    {
+      "path": "scripts/stage1-evidence-contract.mjs",
+      "sha256": "e17a703ed75a1e1e9ce3a7673d834a0ceddd5cbbe512104739add2d03e5f4618"
+    },
+    {
+      "path": "scripts/check-stage1-live-smoke-evidence.mjs",
+      "sha256": "172725c996865627f728b26afb8b4d2a048c74487f8525c6d8c71b90d7afd029"
+    },
+    {
+      "path": "scripts/check-evidence-inventory.mjs",
+      "sha256": "0342247e9e77ee8c7f77d339d3bbd936f0bf6b781fef4e68e094aa2dbbc971df"
+    },
+    {
+      "path": "scripts/check-b0-identity-evidence.mjs",
+      "sha256": "5e007759cf8e8f2a0f9fe817aa7258a23f8ea7d327fc3f82314fcc3650a1e5f7"
+    },
+    {
+      "path": "scripts/state-root.mjs",
+      "sha256": "b43c4dd4fa1753f488db955c3742a8f0bfe403589e3b09495beb4a26c4dd1e62"
+    },
+    {
+      "path": "scripts/stage1-runtime.mjs",
+      "sha256": "98d2639167cf70d2fbad7fbcb3a063b605a778e5dd88487e9ed5e6104a5198bb"
+    },
+    {
+      "path": "scripts/private-state-schema.mjs",
+      "sha256": "ea9f61ca3d29e4de14f772ade3f89598825b62536e2b1d67bc17ebabca2dc8b6"
+    },
+    {
+      "path": "scripts/state-kernel.mjs",
+      "sha256": "6ecf18311174a41d2f47a6009980b56377249f19b473973e2a6c62d2f7552568"
+    },
+    {
+      "path": "scripts/state-internal.mjs",
+      "sha256": "9ab5b73e8fdbc38c7bc63a8c7644d122fb634df5a5ab5a821cca3050a6bebd97"
+    },
+    {
+      "path": "scripts/operation-journal.mjs",
+      "sha256": "1bf6c0384688b94558ecd62b66dca96f9fc64af960ffcfd31d3d8180886e5fb0"
+    },
+    {
+      "path": "scripts/operation-policy.mjs",
+      "sha256": "32c7f3097fed69fe4bb8472e05dfc26e42f992aa0fe8e806fbc22c74ca75fcbc"
+    },
+    {
+      "path": "scripts/git-reconcile.mjs",
+      "sha256": "4ba6e30a0e81975ba4cf73687a8b815d75de8bae535b01e8e0f35607fe4f72c3"
+    },
+    {
+      "path": "scripts/herdr-identity.mjs",
+      "sha256": "83ae17b766988a69b34ebcc9bec2fb8398be8c9104fb27ef1c029b67da307896"
+    },
+    {
+      "path": "scripts/assemble.sh",
+      "sha256": "9ae201c5ae436a2dff135f0787548ea6fa57f7b45493ed40cf6a8cc6a8ccd06c"
+    },
+    {
+      "path": "scripts/board.sh",
+      "sha256": "f60cf28a2e5fdb094cf39a6b95e4511a8f63787157944fa69682926e0f17caee"
+    },
+    {
+      "path": "scripts/status.sh",
+      "sha256": "1f5f6c8e1e8ef1b572964c4b1a26959c132edef6571a495febbb99a80f5beb4d"
+    },
+    {
+      "path": "scripts/harvest.sh",
+      "sha256": "5a3fbb119f36d871d8f7a2b7b82d5b1aff8727b78d9d097aedbd1622e4d13d34"
+    },
+    {
+      "path": "scripts/stand-down.sh",
+      "sha256": "e15dba2d58a4622a07cd37b009be6d5b6ded4d2c06c0f2fc860140d20c018ae2"
+    },
+    {
+      "path": "scripts/board-pane.sh",
+      "sha256": "4da2339d5c85e048fd1a0e022501028ecfcfaa0a6810c68dd36c466c89dc7dd9"
+    },
+    {
+      "path": "bin/renderer.mjs",
+      "sha256": "378798a5ca1fb9afdbb3d79061f40c29dccb9635c9605cd4801bdb106f9e47dc"
+    },
+    {
+      "path": "herdr-plugin.toml",
+      "sha256": "ad8719baa0d08b23b85dfb41811256c244ea96fefe24ea5a072477b0ad0d7fc3"
+    },
+    {
+      "path": "package.json",
+      "sha256": "9b4f867beed8ac5b58b10516169fc6a41be1dd42cc28ae356d548e9f237a3fc9"
+    }
+  ],
+  "schema_version": 1
+}

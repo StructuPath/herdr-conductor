@@ -82,5 +82,7 @@ jobs:
         run: npm run check:manifest
       - name: Validate documentation contracts
         run: npm run check:docs
+      - name: Validate retained evidence contracts
+        run: npm run check:evidence
       - name: Validate workflow syntax
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7

@@ -25,14 +25,19 @@ const HISTORY_PATHS = [
 	"docs/history/2026-07-23-herdr-conductor-origin-spec.md",
 	"docs/history/2026-07-23-feature-delivery-adapter-plan.md",
 ];
+const CANONICAL_VERIFICATION_FILES = [
+	"README.md",
+	"SECURITY.md",
+	"docs/private-state-v1.md",
+];
+const STAGE_RUNTIME_TEST = /^stage1-runtime-.*\.test\.mjs$/;
 const CURRENT_CLAIM_FILES = [
 	"README.md",
+	"SECURITY.md",
 	"docs/herdr-plugins-cheatsheet.md",
 	"roles/reviewer.md",
 	"roles/validator.md",
 	"herdr-plugin.toml",
-	"scripts/conductor-lib.sh",
-	"tests/conductor-lib.test.mjs",
 ];
 const RETIRED_CLAIMS = [
 	["orchestrator survival", /survives? the orchestrator/i],
@@ -93,6 +98,80 @@ function sameMembers(actual, expected) {
 	);
 }
 
+function matchesGlob(value, pattern) {
+	let valueIndex = 0;
+	let patternIndex = 0;
+	let starIndex = -1;
+	let starValueIndex = 0;
+	while (valueIndex < value.length) {
+		if (
+			patternIndex < pattern.length &&
+			(pattern[patternIndex] === "?" ||
+				pattern[patternIndex] === value[valueIndex])
+		) {
+			valueIndex++;
+			patternIndex++;
+		} else if (pattern[patternIndex] === "*") {
+			starIndex = patternIndex++;
+			starValueIndex = valueIndex;
+		} else if (starIndex !== -1) {
+			patternIndex = starIndex + 1;
+			valueIndex = ++starValueIndex;
+		} else return false;
+	}
+	while (pattern[patternIndex] === "*") patternIndex++;
+	return patternIndex === pattern.length;
+}
+
+function validateCanonicalTestCommands(root, relative, content, errors) {
+	const commands = [
+		...content.replace(/\\\n\s*/g, " ").matchAll(/node --test\s+([^\n]+)/g),
+	];
+	if (commands.length === 0) {
+		errors.push(`${relative} must contain a canonical node --test command`);
+		return;
+	}
+	const referenced = new Set();
+	for (const command of commands) {
+		for (const token of command[1].trim().split(/\s+/)) {
+			if (!token.startsWith("tests/")) continue;
+			if (/[*?]/.test(token)) {
+				const directory = path.dirname(token);
+				const pattern = path.basename(token);
+				const directoryPath = path.join(root, directory);
+				const matches = fs.existsSync(directoryPath)
+					? fs
+							.readdirSync(directoryPath)
+							.filter((name) => matchesGlob(name, pattern))
+					: [];
+				if (matches.length === 0)
+					errors.push(
+						`${relative} canonical test command references nonexistent path: ${token}`,
+					);
+				for (const match of matches)
+					referenced.add(path.join(directory, match));
+			} else if (
+				!fs
+					.statSync(path.join(root, token), { throwIfNoEntry: false })
+					?.isFile()
+			) {
+				errors.push(
+					`${relative} canonical test command references nonexistent path: ${token}`,
+				);
+			} else referenced.add(token);
+		}
+	}
+	const splitTests = fs
+		.readdirSync(path.join(root, "tests"))
+		.filter((name) => STAGE_RUNTIME_TEST.test(name))
+		.map((name) => `tests/${name}`);
+	for (const testPath of splitTests)
+		if (!referenced.has(testPath))
+			errors.push(
+				`${relative} canonical test command omits split runtime test: ${testPath}`,
+			);
+}
+
 export function validateDocs(root) {
 	const resolvedRoot = path.resolve(root);
 	const errors = [];
@@ -124,6 +203,32 @@ export function validateDocs(root) {
 	}
 
 	const readme = read(resolvedRoot, "README.md", errors);
+	const security = read(resolvedRoot, "SECURITY.md", errors);
+	const releaseVersion = packageJson?.version;
+	if (
+		typeof releaseVersion !== "string" ||
+		manifest?.version !== releaseVersion
+	)
+		errors.push(
+			"documentation version authority requires matching package and manifest versions",
+		);
+	else {
+		for (const [relative, content] of [
+			["README.md", readme],
+			["SECURITY.md", security],
+		])
+			if (!content.includes(`\`${releaseVersion}\``))
+				errors.push(
+					`${relative} must document release version ${releaseVersion}`,
+				);
+	}
+	if (!/Requirements:\s+Herdr exactly `0\.7\.5`/.test(readme))
+		errors.push("README requirements must support exactly Herdr 0.7.5");
+	if (
+		/Herdr\s+`?>=\s*0\.7\.5`?/i.test(readme) ||
+		/Herdr.{0,24}(?:0\.7\.6|newer|later)/i.test(readme)
+	)
+		errors.push("README must not claim Herdr >=0.7.5 or newer support");
 	const documentedActions = [
 		...readme.matchAll(/action invoke ([a-z][a-z0-9-]*)/g),
 	].map((match) => match[1]);
@@ -133,12 +238,18 @@ export function validateDocs(root) {
 		);
 	}
 
+	for (const relative of CANONICAL_VERIFICATION_FILES) {
+		const content = read(resolvedRoot, relative, errors);
+		validateCanonicalTestCommands(resolvedRoot, relative, content, errors);
+	}
+
 	const requiredScripts = [
 		"test",
 		"check",
 		"check:shell",
 		"check:manifest",
 		"check:docs",
+		"check:evidence",
 	];
 	for (const script of requiredScripts) {
 		if (typeof packageJson?.scripts?.[script] !== "string") {
@@ -173,11 +284,17 @@ export function validateDocs(root) {
 	}
 
 	const requiredBoundaries = [
-		["README.md", "newest global"],
-		["README.md", "Do not invoke `stand-down`"],
-		["README.md", "It is advisory"],
-		["README.md", "not filesystem immutable"],
+		[
+			"README.md",
+			"no `CONDUCTOR_REPO`, ambient-cwd, process-ID, or newest-global fallback",
+		],
+		["README.md", "`harvest` is explicitly invoked and attended"],
+		["README.md", "`stand-down` closes only panes"],
+		["README.md", "B4 live smoke report"],
+		["README.md", "Guard is observational"],
 		["README.md", "does not invoke Swarm"],
+		["SECURITY.md", "attended-operational"],
+		["SECURITY.md", "not authentication"],
 		["roles/reviewer.md", "not enforcement"],
 		["roles/reviewer.md", "Expected integration SHA: <full 40-hex SHA>"],
 		["roles/reviewer.md", "git rev-parse HEAD"],
@@ -188,10 +305,11 @@ export function validateDocs(root) {
 		["roles/validator.md", "git rev-parse HEAD"],
 		["roles/validator.md", "output `BLOCKED`"],
 		["roles/validator.md", "does not advance this cwd"],
-		["scripts/conductor-lib.sh", "does not verify ownership or recover/adopt"],
-		["scripts/conductor-lib.sh", "No live pane identity"],
-		["scripts/conductor-lib.sh", "changes do not synchronize automatically"],
-		["herdr-plugin.toml", "Legacy unsafe teardown"],
+		["herdr-plugin.toml", "Snapshot Conductor status"],
+		[
+			"herdr-plugin.toml",
+			"Archive strict state and close only panes matching the full live recorded identity tuple",
+		],
 		["docs/history/README.md", "not current runtime"],
 	];
 	for (const [relative, boundary] of requiredBoundaries) {
@@ -218,7 +336,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === sourcePath) {
 		process.exitCode = 1;
 	} else {
 		process.stdout.write(
-			`Docs valid: ${result.actionCount} actions agree and ${result.currentDocumentCount} current documents retain Stage 0 boundaries.\n`,
+			`Docs valid: ${result.actionCount} actions agree and ${result.currentDocumentCount} current documents retain Stage 1 B4 boundaries.\n`,
 		);
 	}
 }
