@@ -1,0 +1,548 @@
+{
+  "candidate": {
+    "commit": "274f809192fd2bfa82b3fc5922cc6710c058ef0f",
+    "source_manifest_sha256": "6041f6303e8b511f9d9bf40a65eb8279030aa2149feb92429a4e0d8adfe23499"
+  },
+  "claims_sha256": "a6d0f26fa0fbc51ed6991a21f6fc95d986f7be51bc39b2deaaf311f07adf0e69",
+  "cleanup": {
+    "agent_inventory_restored": true,
+    "closed_workspace_sha256": [
+      "0b7ad68003c13efe6a396fb21b40e9fbc69097fce584b9834df35ba3ae54c99d",
+      "66c77c0efcf8665751060b2b97970ad0c2c9fe558aafff57d96183eb549e6af3",
+      "3f2528ff0850c92e0b955bd6570d48105b05ab4be013924175d8a6df9ef3145c"
+    ],
+    "focus_restored": true,
+    "pane_inventory_restored": true,
+    "prior_disposable_state_record_count_removed": 2,
+    "removed_state_record_sha256": [
+      "135b7e3eebbcb57a26260ae19bb247ad8fb41371988e2a20815acc001ef8a88e",
+      "0b91375a2304bc317d7b7b12f5b728d9900f81be4f61ef6e37a7ecc44444ece5"
+    ],
+    "state_records_absent": true,
+    "temporary_repository_count": 2,
+    "temporary_root_absent": true,
+    "workspace_inventory_restored": true,
+    "zero_residue": true
+  },
+  "document_type": "herdr-conductor-stage1-b4-live-smoke",
+  "harvest": {
+    "final_target_head": "b3d0e845b8657a93497870e16f857b49238f74f9",
+    "journal_result_digest": "bb33710677ef3f3b5905c8cea4cd2963f1fdf6483ffe0d4b8e77cab366ef18d0",
+    "result_digest": "bb33710677ef3f3b5905c8cea4cd2963f1fdf6483ffe0d4b8e77cab366ef18d0",
+    "second_parent_is_source": true,
+    "source_head": "f78f2f03b70ebb40632335a27b507af9276d6a26",
+    "target_ref": "refs/heads/main",
+    "writer_ref_sha256": "cc1893a141f85eafa04edae0c28261a9ddceffdb37363968e7ea6690439e3f63"
+  },
+  "herdr": {
+    "client_version": "0.7.5",
+    "protocol": 17,
+    "schema_version": 1,
+    "server_version": "0.7.5"
+  },
+  "human_report_sha256": "bcaf9f7cbea79ba1314dc6af7c6dedbaf495041ecf15b2ac0da5b8ce4afb6955",
+  "identities": {
+    "generation_sha256": "255a6baa6ac23f073d1618ce8546b775b6e539d9e34bf20cb861f313b297bb11",
+    "primary_repository_key": "1c76563ac20ccf6c1595115a1aba00713baf008eaa6a44630bdbf20a4021fb51",
+    "primary_workspace_sha256": "0b7ad68003c13efe6a396fb21b40e9fbc69097fce584b9834df35ba3ae54c99d",
+    "run_id_sha256": "c3e93e2190b1eafb2e25aece662f017a474a7d1c38b4549843438e57d55dd0eb",
+    "same_repository_workspace_sha256": "66c77c0efcf8665751060b2b97970ad0c2c9fe558aafff57d96183eb549e6af3",
+    "second_repository_key": "7c0999fdbbb2b1cee622a0480d04f0ac91e2238a31197040b60dfd51d2296d19",
+    "second_repository_workspace_sha256": "3f2528ff0850c92e0b955bd6570d48105b05ab4be013924175d8a6df9ef3145c",
+    "writer_pane_sha256": "18c8f962bebb7f4d0cd99b3fceae538277694524f219f81f7d0f798f462cafe6"
+  },
+  "invocations": [
+    {
+      "action_id": "assemble",
+      "context": "primary",
+      "exit_code": 0,
+      "log_id_sha256": "6c58ce0e4beabec7491c5b6f36234f620948f272e3ccc610e31e43e4297d6df5",
+      "output_sha256": "77f10ab7366bf413b07e7147198ea82257d36efccf421e4ecd52fb9a26ca38c8",
+      "result_sha256": "de1a0bd7f8805285700412b1c6d31e19c0c28bfa3b0a66ea500874ab63cbde04",
+      "terminal_status": "succeeded"
+    },
+    {
+      "action_id": "board",
+      "context": "primary",
+      "exit_code": 0,
+      "log_id_sha256": "2f2325bab71d1c8798ff56309792aaf4ac8317cc3d7640bf21fbc9e52f32763e",
+      "output_sha256": "c1486dabd777254da23bbc254ae2b703060e8ebd6010813c585056ca8b880d50",
+      "result_sha256": "ae9f373c850c127da1c3ef49e363447041e9b75d929cebf362e8fd8bd44ef27b",
+      "terminal_status": "succeeded"
+    },
+    {
+      "action_id": "status",
+      "context": "primary",
+      "exit_code": 0,
+      "log_id_sha256": "50a69964edd7649c7f4502f4f2418ddb598efa2868580d13dba1c519c263d526",
+      "output_sha256": "9578faef959298ffb9c0225ca6803842908c5f6e774dc5c84a010b7b5c6948c7",
+      "result_sha256": "14c63779434d6a20ce996c06907615d782174b83c93c28690a090d55f0b4a42a",
+      "terminal_status": "succeeded"
+    },
+    {
+      "action_id": "harvest",
+      "context": "primary",
+      "exit_code": 0,
+      "log_id_sha256": "691550db2c81cce207960a4795086d97b569f6e7e0e170c2975ea3aec3370eb2",
+      "output_sha256": "1a7d93072dd25d06453c5c00867b64f17d0293333255609b7dd6d3a92f11cb16",
+      "result_sha256": "63a58c01d2ededb6af9fee85f5e979f5099a62904345768eab09ac185c5edbdd",
+      "terminal_status": "succeeded"
+    },
+    {
+      "action_id": "stand-down",
+      "context": "primary",
+      "exit_code": 0,
+      "log_id_sha256": "574c503d54c9c0a957d7b05aa5a954e95968b08503cf3e79e64fe1e354414603",
+      "output_sha256": "4092bbcabe81dea916abfc96b5bfee152aaca0472ccfbd377d5b0c7d9eac2d4c",
+      "result_sha256": "799f5113160838bd11c313f002b5d085b5b7f1c7006be5bab00d6091574e5591",
+      "terminal_status": "succeeded"
+    },
+    {
+      "action_id": "board",
+      "context": "same_repository_foreign_workspace",
+      "exit_code": 1,
+      "log_id_sha256": "2901cd3b8f7bfaa9c63280252e0243f7a1949dc4bfe197067e062b63793c5ebe",
+      "output_sha256": "7be259bb285ce90cd6fd7e59b4f8a59ae063bd7679f41bf1ad9262fc9ce77192",
+      "result_sha256": "320094628ac2dd424ab135b6c52d43e4580eb3956da22b9f4f86c8952be4fd0f",
+      "terminal_status": "failed"
+    },
+    {
+      "action_id": "status",
+      "context": "same_repository_foreign_workspace",
+      "exit_code": 1,
+      "log_id_sha256": "f4c4acfe35191c0de6431994c9f55841599ef99cbed4065e30b90ff7c9098e03",
+      "output_sha256": "7be259bb285ce90cd6fd7e59b4f8a59ae063bd7679f41bf1ad9262fc9ce77192",
+      "result_sha256": "320094628ac2dd424ab135b6c52d43e4580eb3956da22b9f4f86c8952be4fd0f",
+      "terminal_status": "failed"
+    },
+    {
+      "action_id": "harvest",
+      "context": "same_repository_foreign_workspace",
+      "exit_code": 1,
+      "log_id_sha256": "e17ba2867cad9c23ca7277a92ff626ad63d17f9c2b44ee51010c33ce7f715a96",
+      "output_sha256": "7be259bb285ce90cd6fd7e59b4f8a59ae063bd7679f41bf1ad9262fc9ce77192",
+      "result_sha256": "320094628ac2dd424ab135b6c52d43e4580eb3956da22b9f4f86c8952be4fd0f",
+      "terminal_status": "failed"
+    },
+    {
+      "action_id": "stand-down",
+      "context": "same_repository_foreign_workspace",
+      "exit_code": 1,
+      "log_id_sha256": "462bec3626d03c8e4e3555f4b4267231e79752ed11f5815320dd4b7918803a4c",
+      "output_sha256": "7be259bb285ce90cd6fd7e59b4f8a59ae063bd7679f41bf1ad9262fc9ce77192",
+      "result_sha256": "320094628ac2dd424ab135b6c52d43e4580eb3956da22b9f4f86c8952be4fd0f",
+      "terminal_status": "failed"
+    },
+    {
+      "action_id": "board",
+      "context": "second_repository_workspace",
+      "exit_code": 1,
+      "log_id_sha256": "d58f38a2637f0b3ae94209942fc4126ed440622bdecbf29e0af74ee2e47e03fc",
+      "output_sha256": "b0b5db1af06bc528dabcaaa5557df943aa9601f5e04a4f034d10d3ecae899d81",
+      "result_sha256": "cbb30ae08f5679915c59c3e2e42a27f5a0390d6cfff1294ee6c4e3c26b2bf4d5",
+      "terminal_status": "failed"
+    },
+    {
+      "action_id": "status",
+      "context": "second_repository_workspace",
+      "exit_code": 1,
+      "log_id_sha256": "cd267090cde0ce342df634f229eb34616d01a2806e6d586ff56e229b2256b2dc",
+      "output_sha256": "b0b5db1af06bc528dabcaaa5557df943aa9601f5e04a4f034d10d3ecae899d81",
+      "result_sha256": "cbb30ae08f5679915c59c3e2e42a27f5a0390d6cfff1294ee6c4e3c26b2bf4d5",
+      "terminal_status": "failed"
+    },
+    {
+      "action_id": "harvest",
+      "context": "second_repository_workspace",
+      "exit_code": 1,
+      "log_id_sha256": "9f7515402105c949523fd55c7a33e44032445bbf21a4106711abc5aafbfa02ee",
+      "output_sha256": "b0b5db1af06bc528dabcaaa5557df943aa9601f5e04a4f034d10d3ecae899d81",
+      "result_sha256": "cbb30ae08f5679915c59c3e2e42a27f5a0390d6cfff1294ee6c4e3c26b2bf4d5",
+      "terminal_status": "failed"
+    },
+    {
+      "action_id": "stand-down",
+      "context": "second_repository_workspace",
+      "exit_code": 1,
+      "log_id_sha256": "22dd5f15a0413508aa3c570137f1f40c6db8287b6bd385647ffd85131fd0ae6c",
+      "output_sha256": "b0b5db1af06bc528dabcaaa5557df943aa9601f5e04a4f034d10d3ecae899d81",
+      "result_sha256": "cbb30ae08f5679915c59c3e2e42a27f5a0390d6cfff1294ee6c4e3c26b2bf4d5",
+      "terminal_status": "failed"
+    }
+  ],
+  "isolation": {
+    "baseline": {
+      "active_pointer_sha256": "7bac7dd9b36f5fb139f2b0a59188434ea359885559405a429fbade8d2b43e842",
+      "cas_count": 0,
+      "close_count": 0,
+      "disposable_agent_inventory_sha256": "dc10302fc3026ccf537ce78c77a72778171496f8bda506e49ed2e3a9d269a150",
+      "disposable_pane_inventory_sha256": "70cdf06aa090d0c64137613fa12e0a5cea3bdaf68cf354c3090a4dc64702ddc5",
+      "disposable_workspace_inventory_sha256": "37078d693c9db38656362a439b38652e901130bf7966d160b0a2be1e2f136115",
+      "pane_tuple_sha256": "cb93ee0da83245e164e0487580370e8c76bdcfc7f43b9560a75406123a8b0590",
+      "primary_git_sha256": "13df80e66f5b9fa23e277db2ec1119ba3f43bbd13cc42cadd220dbade9b2df69",
+      "primary_repository_state_sha256": "097bd5f94c6cb03b8f3678a3457ca926ce6c68806dc19b648884de59e11c7cac",
+      "secondary_git_sha256": "8e4899d2efa3f94abcc4f8344a909469a53452df4984a1191b6acfe09e2d9506",
+      "secondary_repository_state_sha256": "5ad38304b535c2987dbd24657c1a11b884984ff600d9f389deb0d4e634fee792",
+      "workspace_state_sha256": "22dad6bdc5b3d5d4e2b9fd66d24cea23ff3294ed5a20c9acf32fd0b06a5ee160"
+    },
+    "probes": [
+      {
+        "action_id": "board",
+        "after": {
+          "active_pointer_sha256": "7bac7dd9b36f5fb139f2b0a59188434ea359885559405a429fbade8d2b43e842",
+          "cas_count": 0,
+          "close_count": 0,
+          "disposable_agent_inventory_sha256": "dc10302fc3026ccf537ce78c77a72778171496f8bda506e49ed2e3a9d269a150",
+          "disposable_pane_inventory_sha256": "f68302c512384bee0d0ffef6e0f90e5aa2ca601be5a9caaf2ab42f510609b6d6",
+          "disposable_workspace_inventory_sha256": "379cb0ea5d6caea69ea7d17587e85c735d5e939dbd8d8ff50405b48991c17640",
+          "pane_tuple_sha256": "cb93ee0da83245e164e0487580370e8c76bdcfc7f43b9560a75406123a8b0590",
+          "primary_git_sha256": "13df80e66f5b9fa23e277db2ec1119ba3f43bbd13cc42cadd220dbade9b2df69",
+          "primary_repository_state_sha256": "097bd5f94c6cb03b8f3678a3457ca926ce6c68806dc19b648884de59e11c7cac",
+          "secondary_git_sha256": "8e4899d2efa3f94abcc4f8344a909469a53452df4984a1191b6acfe09e2d9506",
+          "secondary_repository_state_sha256": "5ad38304b535c2987dbd24657c1a11b884984ff600d9f389deb0d4e634fee792",
+          "workspace_state_sha256": "22dad6bdc5b3d5d4e2b9fd66d24cea23ff3294ed5a20c9acf32fd0b06a5ee160"
+        },
+        "before": {
+          "active_pointer_sha256": "7bac7dd9b36f5fb139f2b0a59188434ea359885559405a429fbade8d2b43e842",
+          "cas_count": 0,
+          "close_count": 0,
+          "disposable_agent_inventory_sha256": "dc10302fc3026ccf537ce78c77a72778171496f8bda506e49ed2e3a9d269a150",
+          "disposable_pane_inventory_sha256": "f68302c512384bee0d0ffef6e0f90e5aa2ca601be5a9caaf2ab42f510609b6d6",
+          "disposable_workspace_inventory_sha256": "379cb0ea5d6caea69ea7d17587e85c735d5e939dbd8d8ff50405b48991c17640",
+          "pane_tuple_sha256": "cb93ee0da83245e164e0487580370e8c76bdcfc7f43b9560a75406123a8b0590",
+          "primary_git_sha256": "13df80e66f5b9fa23e277db2ec1119ba3f43bbd13cc42cadd220dbade9b2df69",
+          "primary_repository_state_sha256": "097bd5f94c6cb03b8f3678a3457ca926ce6c68806dc19b648884de59e11c7cac",
+          "secondary_git_sha256": "8e4899d2efa3f94abcc4f8344a909469a53452df4984a1191b6acfe09e2d9506",
+          "secondary_repository_state_sha256": "5ad38304b535c2987dbd24657c1a11b884984ff600d9f389deb0d4e634fee792",
+          "workspace_state_sha256": "22dad6bdc5b3d5d4e2b9fd66d24cea23ff3294ed5a20c9acf32fd0b06a5ee160"
+        },
+        "context": "same_repository_foreign_workspace"
+      },
+      {
+        "action_id": "status",
+        "after": {
+          "active_pointer_sha256": "7bac7dd9b36f5fb139f2b0a59188434ea359885559405a429fbade8d2b43e842",
+          "cas_count": 0,
+          "close_count": 0,
+          "disposable_agent_inventory_sha256": "dc10302fc3026ccf537ce78c77a72778171496f8bda506e49ed2e3a9d269a150",
+          "disposable_pane_inventory_sha256": "f68302c512384bee0d0ffef6e0f90e5aa2ca601be5a9caaf2ab42f510609b6d6",
+          "disposable_workspace_inventory_sha256": "379cb0ea5d6caea69ea7d17587e85c735d5e939dbd8d8ff50405b48991c17640",
+          "pane_tuple_sha256": "cb93ee0da83245e164e0487580370e8c76bdcfc7f43b9560a75406123a8b0590",
+          "primary_git_sha256": "13df80e66f5b9fa23e277db2ec1119ba3f43bbd13cc42cadd220dbade9b2df69",
+          "primary_repository_state_sha256": "097bd5f94c6cb03b8f3678a3457ca926ce6c68806dc19b648884de59e11c7cac",
+          "secondary_git_sha256": "8e4899d2efa3f94abcc4f8344a909469a53452df4984a1191b6acfe09e2d9506",
+          "secondary_repository_state_sha256": "5ad38304b535c2987dbd24657c1a11b884984ff600d9f389deb0d4e634fee792",
+          "workspace_state_sha256": "22dad6bdc5b3d5d4e2b9fd66d24cea23ff3294ed5a20c9acf32fd0b06a5ee160"
+        },
+        "before": {
+          "active_pointer_sha256": "7bac7dd9b36f5fb139f2b0a59188434ea359885559405a429fbade8d2b43e842",
+          "cas_count": 0,
+          "close_count": 0,
+          "disposable_agent_inventory_sha256": "dc10302fc3026ccf537ce78c77a72778171496f8bda506e49ed2e3a9d269a150",
+          "disposable_pane_inventory_sha256": "f68302c512384bee0d0ffef6e0f90e5aa2ca601be5a9caaf2ab42f510609b6d6",
+          "disposable_workspace_inventory_sha256": "379cb0ea5d6caea69ea7d17587e85c735d5e939dbd8d8ff50405b48991c17640",
+          "pane_tuple_sha256": "cb93ee0da83245e164e0487580370e8c76bdcfc7f43b9560a75406123a8b0590",
+          "primary_git_sha256": "13df80e66f5b9fa23e277db2ec1119ba3f43bbd13cc42cadd220dbade9b2df69",
+          "primary_repository_state_sha256": "097bd5f94c6cb03b8f3678a3457ca926ce6c68806dc19b648884de59e11c7cac",
+          "secondary_git_sha256": "8e4899d2efa3f94abcc4f8344a909469a53452df4984a1191b6acfe09e2d9506",
+          "secondary_repository_state_sha256": "5ad38304b535c2987dbd24657c1a11b884984ff600d9f389deb0d4e634fee792",
+          "workspace_state_sha256": "22dad6bdc5b3d5d4e2b9fd66d24cea23ff3294ed5a20c9acf32fd0b06a5ee160"
+        },
+        "context": "same_repository_foreign_workspace"
+      },
+      {
+        "action_id": "harvest",
+        "after": {
+          "active_pointer_sha256": "7bac7dd9b36f5fb139f2b0a59188434ea359885559405a429fbade8d2b43e842",
+          "cas_count": 0,
+          "close_count": 0,
+          "disposable_agent_inventory_sha256": "dc10302fc3026ccf537ce78c77a72778171496f8bda506e49ed2e3a9d269a150",
+          "disposable_pane_inventory_sha256": "f68302c512384bee0d0ffef6e0f90e5aa2ca601be5a9caaf2ab42f510609b6d6",
+          "disposable_workspace_inventory_sha256": "379cb0ea5d6caea69ea7d17587e85c735d5e939dbd8d8ff50405b48991c17640",
+          "pane_tuple_sha256": "cb93ee0da83245e164e0487580370e8c76bdcfc7f43b9560a75406123a8b0590",
+          "primary_git_sha256": "13df80e66f5b9fa23e277db2ec1119ba3f43bbd13cc42cadd220dbade9b2df69",
+          "primary_repository_state_sha256": "097bd5f94c6cb03b8f3678a3457ca926ce6c68806dc19b648884de59e11c7cac",
+          "secondary_git_sha256": "8e4899d2efa3f94abcc4f8344a909469a53452df4984a1191b6acfe09e2d9506",
+          "secondary_repository_state_sha256": "5ad38304b535c2987dbd24657c1a11b884984ff600d9f389deb0d4e634fee792",
+          "workspace_state_sha256": "22dad6bdc5b3d5d4e2b9fd66d24cea23ff3294ed5a20c9acf32fd0b06a5ee160"
+        },
+        "before": {
+          "active_pointer_sha256": "7bac7dd9b36f5fb139f2b0a59188434ea359885559405a429fbade8d2b43e842",
+          "cas_count": 0,
+          "close_count": 0,
+          "disposable_agent_inventory_sha256": "dc10302fc3026ccf537ce78c77a72778171496f8bda506e49ed2e3a9d269a150",
+          "disposable_pane_inventory_sha256": "f68302c512384bee0d0ffef6e0f90e5aa2ca601be5a9caaf2ab42f510609b6d6",
+          "disposable_workspace_inventory_sha256": "379cb0ea5d6caea69ea7d17587e85c735d5e939dbd8d8ff50405b48991c17640",
+          "pane_tuple_sha256": "cb93ee0da83245e164e0487580370e8c76bdcfc7f43b9560a75406123a8b0590",
+          "primary_git_sha256": "13df80e66f5b9fa23e277db2ec1119ba3f43bbd13cc42cadd220dbade9b2df69",
+          "primary_repository_state_sha256": "097bd5f94c6cb03b8f3678a3457ca926ce6c68806dc19b648884de59e11c7cac",
+          "secondary_git_sha256": "8e4899d2efa3f94abcc4f8344a909469a53452df4984a1191b6acfe09e2d9506",
+          "secondary_repository_state_sha256": "5ad38304b535c2987dbd24657c1a11b884984ff600d9f389deb0d4e634fee792",
+          "workspace_state_sha256": "22dad6bdc5b3d5d4e2b9fd66d24cea23ff3294ed5a20c9acf32fd0b06a5ee160"
+        },
+        "context": "same_repository_foreign_workspace"
+      },
+      {
+        "action_id": "stand-down",
+        "after": {
+          "active_pointer_sha256": "7bac7dd9b36f5fb139f2b0a59188434ea359885559405a429fbade8d2b43e842",
+          "cas_count": 0,
+          "close_count": 0,
+          "disposable_agent_inventory_sha256": "dc10302fc3026ccf537ce78c77a72778171496f8bda506e49ed2e3a9d269a150",
+          "disposable_pane_inventory_sha256": "f68302c512384bee0d0ffef6e0f90e5aa2ca601be5a9caaf2ab42f510609b6d6",
+          "disposable_workspace_inventory_sha256": "379cb0ea5d6caea69ea7d17587e85c735d5e939dbd8d8ff50405b48991c17640",
+          "pane_tuple_sha256": "cb93ee0da83245e164e0487580370e8c76bdcfc7f43b9560a75406123a8b0590",
+          "primary_git_sha256": "13df80e66f5b9fa23e277db2ec1119ba3f43bbd13cc42cadd220dbade9b2df69",
+          "primary_repository_state_sha256": "097bd5f94c6cb03b8f3678a3457ca926ce6c68806dc19b648884de59e11c7cac",
+          "secondary_git_sha256": "8e4899d2efa3f94abcc4f8344a909469a53452df4984a1191b6acfe09e2d9506",
+          "secondary_repository_state_sha256": "5ad38304b535c2987dbd24657c1a11b884984ff600d9f389deb0d4e634fee792",
+          "workspace_state_sha256": "22dad6bdc5b3d5d4e2b9fd66d24cea23ff3294ed5a20c9acf32fd0b06a5ee160"
+        },
+        "before": {
+          "active_pointer_sha256": "7bac7dd9b36f5fb139f2b0a59188434ea359885559405a429fbade8d2b43e842",
+          "cas_count": 0,
+          "close_count": 0,
+          "disposable_agent_inventory_sha256": "dc10302fc3026ccf537ce78c77a72778171496f8bda506e49ed2e3a9d269a150",
+          "disposable_pane_inventory_sha256": "f68302c512384bee0d0ffef6e0f90e5aa2ca601be5a9caaf2ab42f510609b6d6",
+          "disposable_workspace_inventory_sha256": "379cb0ea5d6caea69ea7d17587e85c735d5e939dbd8d8ff50405b48991c17640",
+          "pane_tuple_sha256": "cb93ee0da83245e164e0487580370e8c76bdcfc7f43b9560a75406123a8b0590",
+          "primary_git_sha256": "13df80e66f5b9fa23e277db2ec1119ba3f43bbd13cc42cadd220dbade9b2df69",
+          "primary_repository_state_sha256": "097bd5f94c6cb03b8f3678a3457ca926ce6c68806dc19b648884de59e11c7cac",
+          "secondary_git_sha256": "8e4899d2efa3f94abcc4f8344a909469a53452df4984a1191b6acfe09e2d9506",
+          "secondary_repository_state_sha256": "5ad38304b535c2987dbd24657c1a11b884984ff600d9f389deb0d4e634fee792",
+          "workspace_state_sha256": "22dad6bdc5b3d5d4e2b9fd66d24cea23ff3294ed5a20c9acf32fd0b06a5ee160"
+        },
+        "context": "same_repository_foreign_workspace"
+      },
+      {
+        "action_id": "board",
+        "after": {
+          "active_pointer_sha256": "7bac7dd9b36f5fb139f2b0a59188434ea359885559405a429fbade8d2b43e842",
+          "cas_count": 0,
+          "close_count": 0,
+          "disposable_agent_inventory_sha256": "dc10302fc3026ccf537ce78c77a72778171496f8bda506e49ed2e3a9d269a150",
+          "disposable_pane_inventory_sha256": "f719c4a95a2af33a226c224a5b2e1c86eaa35b28efbebdcaf9e941489af2563c",
+          "disposable_workspace_inventory_sha256": "aedc0a357687307e89620a0570551342c834d0d37f9691eb46989d3b45998a45",
+          "pane_tuple_sha256": "cb93ee0da83245e164e0487580370e8c76bdcfc7f43b9560a75406123a8b0590",
+          "primary_git_sha256": "13df80e66f5b9fa23e277db2ec1119ba3f43bbd13cc42cadd220dbade9b2df69",
+          "primary_repository_state_sha256": "097bd5f94c6cb03b8f3678a3457ca926ce6c68806dc19b648884de59e11c7cac",
+          "secondary_git_sha256": "8e4899d2efa3f94abcc4f8344a909469a53452df4984a1191b6acfe09e2d9506",
+          "secondary_repository_state_sha256": "5ad38304b535c2987dbd24657c1a11b884984ff600d9f389deb0d4e634fee792",
+          "workspace_state_sha256": "22dad6bdc5b3d5d4e2b9fd66d24cea23ff3294ed5a20c9acf32fd0b06a5ee160"
+        },
+        "before": {
+          "active_pointer_sha256": "7bac7dd9b36f5fb139f2b0a59188434ea359885559405a429fbade8d2b43e842",
+          "cas_count": 0,
+          "close_count": 0,
+          "disposable_agent_inventory_sha256": "dc10302fc3026ccf537ce78c77a72778171496f8bda506e49ed2e3a9d269a150",
+          "disposable_pane_inventory_sha256": "f719c4a95a2af33a226c224a5b2e1c86eaa35b28efbebdcaf9e941489af2563c",
+          "disposable_workspace_inventory_sha256": "aedc0a357687307e89620a0570551342c834d0d37f9691eb46989d3b45998a45",
+          "pane_tuple_sha256": "cb93ee0da83245e164e0487580370e8c76bdcfc7f43b9560a75406123a8b0590",
+          "primary_git_sha256": "13df80e66f5b9fa23e277db2ec1119ba3f43bbd13cc42cadd220dbade9b2df69",
+          "primary_repository_state_sha256": "097bd5f94c6cb03b8f3678a3457ca926ce6c68806dc19b648884de59e11c7cac",
+          "secondary_git_sha256": "8e4899d2efa3f94abcc4f8344a909469a53452df4984a1191b6acfe09e2d9506",
+          "secondary_repository_state_sha256": "5ad38304b535c2987dbd24657c1a11b884984ff600d9f389deb0d4e634fee792",
+          "workspace_state_sha256": "22dad6bdc5b3d5d4e2b9fd66d24cea23ff3294ed5a20c9acf32fd0b06a5ee160"
+        },
+        "context": "second_repository_workspace"
+      },
+      {
+        "action_id": "status",
+        "after": {
+          "active_pointer_sha256": "7bac7dd9b36f5fb139f2b0a59188434ea359885559405a429fbade8d2b43e842",
+          "cas_count": 0,
+          "close_count": 0,
+          "disposable_agent_inventory_sha256": "dc10302fc3026ccf537ce78c77a72778171496f8bda506e49ed2e3a9d269a150",
+          "disposable_pane_inventory_sha256": "f719c4a95a2af33a226c224a5b2e1c86eaa35b28efbebdcaf9e941489af2563c",
+          "disposable_workspace_inventory_sha256": "aedc0a357687307e89620a0570551342c834d0d37f9691eb46989d3b45998a45",
+          "pane_tuple_sha256": "cb93ee0da83245e164e0487580370e8c76bdcfc7f43b9560a75406123a8b0590",
+          "primary_git_sha256": "13df80e66f5b9fa23e277db2ec1119ba3f43bbd13cc42cadd220dbade9b2df69",
+          "primary_repository_state_sha256": "097bd5f94c6cb03b8f3678a3457ca926ce6c68806dc19b648884de59e11c7cac",
+          "secondary_git_sha256": "8e4899d2efa3f94abcc4f8344a909469a53452df4984a1191b6acfe09e2d9506",
+          "secondary_repository_state_sha256": "5ad38304b535c2987dbd24657c1a11b884984ff600d9f389deb0d4e634fee792",
+          "workspace_state_sha256": "22dad6bdc5b3d5d4e2b9fd66d24cea23ff3294ed5a20c9acf32fd0b06a5ee160"
+        },
+        "before": {
+          "active_pointer_sha256": "7bac7dd9b36f5fb139f2b0a59188434ea359885559405a429fbade8d2b43e842",
+          "cas_count": 0,
+          "close_count": 0,
+          "disposable_agent_inventory_sha256": "dc10302fc3026ccf537ce78c77a72778171496f8bda506e49ed2e3a9d269a150",
+          "disposable_pane_inventory_sha256": "f719c4a95a2af33a226c224a5b2e1c86eaa35b28efbebdcaf9e941489af2563c",
+          "disposable_workspace_inventory_sha256": "aedc0a357687307e89620a0570551342c834d0d37f9691eb46989d3b45998a45",
+          "pane_tuple_sha256": "cb93ee0da83245e164e0487580370e8c76bdcfc7f43b9560a75406123a8b0590",
+          "primary_git_sha256": "13df80e66f5b9fa23e277db2ec1119ba3f43bbd13cc42cadd220dbade9b2df69",
+          "primary_repository_state_sha256": "097bd5f94c6cb03b8f3678a3457ca926ce6c68806dc19b648884de59e11c7cac",
+          "secondary_git_sha256": "8e4899d2efa3f94abcc4f8344a909469a53452df4984a1191b6acfe09e2d9506",
+          "secondary_repository_state_sha256": "5ad38304b535c2987dbd24657c1a11b884984ff600d9f389deb0d4e634fee792",
+          "workspace_state_sha256": "22dad6bdc5b3d5d4e2b9fd66d24cea23ff3294ed5a20c9acf32fd0b06a5ee160"
+        },
+        "context": "second_repository_workspace"
+      },
+      {
+        "action_id": "harvest",
+        "after": {
+          "active_pointer_sha256": "7bac7dd9b36f5fb139f2b0a59188434ea359885559405a429fbade8d2b43e842",
+          "cas_count": 0,
+          "close_count": 0,
+          "disposable_agent_inventory_sha256": "dc10302fc3026ccf537ce78c77a72778171496f8bda506e49ed2e3a9d269a150",
+          "disposable_pane_inventory_sha256": "f719c4a95a2af33a226c224a5b2e1c86eaa35b28efbebdcaf9e941489af2563c",
+          "disposable_workspace_inventory_sha256": "aedc0a357687307e89620a0570551342c834d0d37f9691eb46989d3b45998a45",
+          "pane_tuple_sha256": "cb93ee0da83245e164e0487580370e8c76bdcfc7f43b9560a75406123a8b0590",
+          "primary_git_sha256": "13df80e66f5b9fa23e277db2ec1119ba3f43bbd13cc42cadd220dbade9b2df69",
+          "primary_repository_state_sha256": "097bd5f94c6cb03b8f3678a3457ca926ce6c68806dc19b648884de59e11c7cac",
+          "secondary_git_sha256": "8e4899d2efa3f94abcc4f8344a909469a53452df4984a1191b6acfe09e2d9506",
+          "secondary_repository_state_sha256": "5ad38304b535c2987dbd24657c1a11b884984ff600d9f389deb0d4e634fee792",
+          "workspace_state_sha256": "22dad6bdc5b3d5d4e2b9fd66d24cea23ff3294ed5a20c9acf32fd0b06a5ee160"
+        },
+        "before": {
+          "active_pointer_sha256": "7bac7dd9b36f5fb139f2b0a59188434ea359885559405a429fbade8d2b43e842",
+          "cas_count": 0,
+          "close_count": 0,
+          "disposable_agent_inventory_sha256": "dc10302fc3026ccf537ce78c77a72778171496f8bda506e49ed2e3a9d269a150",
+          "disposable_pane_inventory_sha256": "f719c4a95a2af33a226c224a5b2e1c86eaa35b28efbebdcaf9e941489af2563c",
+          "disposable_workspace_inventory_sha256": "aedc0a357687307e89620a0570551342c834d0d37f9691eb46989d3b45998a45",
+          "pane_tuple_sha256": "cb93ee0da83245e164e0487580370e8c76bdcfc7f43b9560a75406123a8b0590",
+          "primary_git_sha256": "13df80e66f5b9fa23e277db2ec1119ba3f43bbd13cc42cadd220dbade9b2df69",
+          "primary_repository_state_sha256": "097bd5f94c6cb03b8f3678a3457ca926ce6c68806dc19b648884de59e11c7cac",
+          "secondary_git_sha256": "8e4899d2efa3f94abcc4f8344a909469a53452df4984a1191b6acfe09e2d9506",
+          "secondary_repository_state_sha256": "5ad38304b535c2987dbd24657c1a11b884984ff600d9f389deb0d4e634fee792",
+          "workspace_state_sha256": "22dad6bdc5b3d5d4e2b9fd66d24cea23ff3294ed5a20c9acf32fd0b06a5ee160"
+        },
+        "context": "second_repository_workspace"
+      },
+      {
+        "action_id": "stand-down",
+        "after": {
+          "active_pointer_sha256": "7bac7dd9b36f5fb139f2b0a59188434ea359885559405a429fbade8d2b43e842",
+          "cas_count": 0,
+          "close_count": 0,
+          "disposable_agent_inventory_sha256": "dc10302fc3026ccf537ce78c77a72778171496f8bda506e49ed2e3a9d269a150",
+          "disposable_pane_inventory_sha256": "f719c4a95a2af33a226c224a5b2e1c86eaa35b28efbebdcaf9e941489af2563c",
+          "disposable_workspace_inventory_sha256": "aedc0a357687307e89620a0570551342c834d0d37f9691eb46989d3b45998a45",
+          "pane_tuple_sha256": "cb93ee0da83245e164e0487580370e8c76bdcfc7f43b9560a75406123a8b0590",
+          "primary_git_sha256": "13df80e66f5b9fa23e277db2ec1119ba3f43bbd13cc42cadd220dbade9b2df69",
+          "primary_repository_state_sha256": "097bd5f94c6cb03b8f3678a3457ca926ce6c68806dc19b648884de59e11c7cac",
+          "secondary_git_sha256": "8e4899d2efa3f94abcc4f8344a909469a53452df4984a1191b6acfe09e2d9506",
+          "secondary_repository_state_sha256": "5ad38304b535c2987dbd24657c1a11b884984ff600d9f389deb0d4e634fee792",
+          "workspace_state_sha256": "22dad6bdc5b3d5d4e2b9fd66d24cea23ff3294ed5a20c9acf32fd0b06a5ee160"
+        },
+        "before": {
+          "active_pointer_sha256": "7bac7dd9b36f5fb139f2b0a59188434ea359885559405a429fbade8d2b43e842",
+          "cas_count": 0,
+          "close_count": 0,
+          "disposable_agent_inventory_sha256": "dc10302fc3026ccf537ce78c77a72778171496f8bda506e49ed2e3a9d269a150",
+          "disposable_pane_inventory_sha256": "f719c4a95a2af33a226c224a5b2e1c86eaa35b28efbebdcaf9e941489af2563c",
+          "disposable_workspace_inventory_sha256": "aedc0a357687307e89620a0570551342c834d0d37f9691eb46989d3b45998a45",
+          "pane_tuple_sha256": "cb93ee0da83245e164e0487580370e8c76bdcfc7f43b9560a75406123a8b0590",
+          "primary_git_sha256": "13df80e66f5b9fa23e277db2ec1119ba3f43bbd13cc42cadd220dbade9b2df69",
+          "primary_repository_state_sha256": "097bd5f94c6cb03b8f3678a3457ca926ce6c68806dc19b648884de59e11c7cac",
+          "secondary_git_sha256": "8e4899d2efa3f94abcc4f8344a909469a53452df4984a1191b6acfe09e2d9506",
+          "secondary_repository_state_sha256": "5ad38304b535c2987dbd24657c1a11b884984ff600d9f389deb0d4e634fee792",
+          "workspace_state_sha256": "22dad6bdc5b3d5d4e2b9fd66d24cea23ff3294ed5a20c9acf32fd0b06a5ee160"
+        },
+        "context": "second_repository_workspace"
+      }
+    ]
+  },
+  "journal": {
+    "chain_summary_sha256": "0de1299f7910c6b571a5e693430adde9d2cb2c74a05ca1672dd5cf0549fab2e0",
+    "entries": [
+      {
+        "entry_digest": "7c4cb25d3cf69f67cdc71ddd82c7fcf093518d01f0a2866eb810a9e13dde3ad9",
+        "operation_type": "integration.bind",
+        "result_digest": "c4c60aac5fad6ebfbd347319967966569fde33ceb07dbe02d684a07fc1afc2c1",
+        "sequence": 1
+      },
+      {
+        "entry_digest": "eb2eb3b1be8dbb874e9b0d4bd709707688e39abe273e8c82227504aa1b38a43c",
+        "operation_type": "worktree.create",
+        "result_digest": "1acf4f5f2d94a6274ffe42979f029548b02d69bc6d049b17e1bed57280506f2f",
+        "sequence": 2
+      },
+      {
+        "entry_digest": "12996b51bf7ca77b0d90e4524054f12835541fb6f54f84c155abac70e244af09",
+        "operation_type": "pane.create",
+        "result_digest": "e3a9520e5e019d2f8673a41f2339f554e9c9500a01d7c8d71f25f1bc23018e1d",
+        "sequence": 3
+      },
+      {
+        "entry_digest": "203e57f14a67b63bbb0ea9e328a41f14152709cac3a59b0ac094829fbbdcaced",
+        "operation_type": "agent.start",
+        "result_digest": "4644e249b441af1c072fdd0e514a9c56e3a663cf8577e90ea9987773646a5c2f",
+        "sequence": 4
+      },
+      {
+        "entry_digest": "60b9619ac350eb6f25cbbce09cb2a954516537fe6c5e0ce7d130e054deaaf81a",
+        "operation_type": "git.merge",
+        "result_digest": "bb33710677ef3f3b5905c8cea4cd2963f1fdf6483ffe0d4b8e77cab366ef18d0",
+        "sequence": 5
+      },
+      {
+        "entry_digest": "d74e879af73cb86886b1047edc57538b951bcece7fcf3883b9212b3794c784a6",
+        "operation_type": "pane.close",
+        "result_digest": "03314c869d5a0f32b0967a638d75617947efc08c1e8c9a56800b45f7b0fa7d4a",
+        "sequence": 6
+      },
+      {
+        "entry_digest": "2b56be759c286dcd1d9ef5837427ac1240f373fca08a08535b1dba20f67e3293",
+        "operation_type": "run.archive",
+        "result_digest": "bd1afc7f828bfe19d41e2b990dbb1cdb1d5937f75e0f6593b0dc611ed543ea2f",
+        "sequence": 7
+      }
+    ],
+    "entry_count": 7,
+    "head": "2b56be759c286dcd1d9ef5837427ac1240f373fca08a08535b1dba20f67e3293"
+  },
+  "privacy": {
+    "excluded": [
+      "raw action log identifiers",
+      "terminal output",
+      "agent transcripts",
+      "prompts",
+      "environment",
+      "socket contents",
+      "tokens",
+      "private data",
+      "filesystem paths"
+    ],
+    "operator_observed_local": true,
+    "remote_attestation": false,
+    "same_uid_authentication": false,
+    "sanitized": true
+  },
+  "result": "passed",
+  "retention": {
+    "files": [
+      {
+        "path": "retained/marker.txt",
+        "sha256": "fffd8313f6020e1ab9c9bd44361194e719655131c2293b3b3799d497b6a38216"
+      },
+      {
+        "path": "retained/report.json",
+        "sha256": "a4087f003cda1c018ba09e083741c3a0395f7563dee2e16551513f12409cf6ff"
+      },
+      {
+        "path": "retained/live-smoke.log",
+        "sha256": "2cae21b3c5e7a77394e4ba1522a8f6cee72588b2d015a9c82b60e2fb96631f62"
+      },
+      {
+        "path": "retained/Guard-observation.txt",
+        "sha256": "b0a0587c53ea86e0045154e81dea6f4f0e1a7b750cf92e8d63df55fd88601f09"
+      }
+    ],
+    "writer_branch_observed": true,
+    "writer_worktree_observed": true
+  },
+  "schema_version": 3,
+  "stand_down": {
+    "active_pointer_absent": true,
+    "close_journal_count": 1,
+    "closed_count": 1,
+    "exact_pane_absent": true,
+    "run_archived": true
+  },
+  "timestamps": {
+    "completed_at": "2026-07-29T07:25:07.563Z",
+    "started_at": "2026-07-29T07:24:59.051Z"
+  }
+}
