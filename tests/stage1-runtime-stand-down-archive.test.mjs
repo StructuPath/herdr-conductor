@@ -232,6 +232,46 @@ test("successful stand-down exposes the verified archived terminal through statu
 	assert.deepEqual(status.workers, []);
 });
 
+test("status and stand-down require every published task before and after archive", async () => {
+	for (const archived of [false, true]) {
+		const fixture = await assembledFixture();
+		if (archived)
+			await standDown({
+				contextJson: context(fixture.repository, fixture.workspace),
+				herdrBin: "fake",
+				exec: fixture.fake.exec,
+				reason: "operator_abandoned",
+			});
+		rmSync(fixture.result.workers[0].task_path);
+		const authorityBytes = canonicalJson(privateDocuments(fixture.stateRoot));
+		const effects = fixture.fake.effects;
+		assert.throws(
+			() =>
+				readStatus({
+					contextJson: context(fixture.repository, fixture.workspace),
+					herdrBin: "fake",
+					exec: fixture.fake.exec,
+				}),
+			(error) => error.code === "bookkeeping_unknown",
+		);
+		await assert.rejects(
+			() =>
+				standDown({
+					contextJson: context(fixture.repository, fixture.workspace),
+					herdrBin: "fake",
+					exec: fixture.fake.exec,
+					reason: "operator_abandoned",
+				}),
+			(error) => error.code === "bookkeeping_unknown",
+		);
+		assert.equal(
+			canonicalJson(privateDocuments(fixture.stateRoot)),
+			authorityBytes,
+		);
+		assert.equal(fixture.fake.effects, effects);
+	}
+});
+
 test("archived replay rejects every terminal authority mutation without effects", async () => {
 	const fixture = await assembledFixture({
 		roles: [

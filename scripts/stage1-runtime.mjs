@@ -1637,6 +1637,49 @@ function deriveRetainedReportAuthorityUnchecked(active, stateRoot) {
 		!active?.journal
 	)
 		fail("bookkeeping_unknown", "retained report paths are unavailable");
+	const tasks = Object.create(null);
+	for (const entry of active.journal.filter(
+		(candidate) =>
+			candidate.operation_type === "task.publish" &&
+			candidate.phase === "observed",
+	)) {
+		if (Object.hasOwn(tasks, entry.subject.id))
+			fail("bookkeeping_unknown", "retained task authority is duplicated");
+		validateId(entry.subject.id, "retained task role");
+		validateGeneration(entry.subject.generation, "retained task generation");
+		if (
+			entry.subject.kind !== "task" ||
+			entry.operation_id !==
+				`task-publish-${entry.subject.id}-${entry.subject.generation}`
+		)
+			fail("bookkeeping_unknown", "retained task journal subject is invalid");
+		const taskPath = join(
+			active.paths.tasksDir,
+			entry.subject.id,
+			`${entry.subject.generation}.json`,
+		);
+		const taskBytes = readStablePrivateBytes(taskPath, {
+			root: stateRoot,
+			maxBytes: 262_144,
+		});
+		const task = parseTaskBytes(taskBytes);
+		if (!taskBytes.equals(Buffer.from(canonicalJson(task))))
+			fail("bookkeeping_unknown", "retained task bytes are not canonical");
+		if (
+			task.role.name !== entry.subject.id ||
+			task.task_generation !== entry.subject.generation ||
+			task.task_digest !== entry.result_digest ||
+			task.scope.repository.key !== active.state.repository.key ||
+			task.scope.workspace_id !== active.state.workspace_id ||
+			task.scope.run_id !== active.state.run_id ||
+			task.scope.run_generation !== active.state.generation
+		)
+			fail(
+				"bookkeeping_unknown",
+				"retained task bytes do not match journal and run authority",
+			);
+		tasks[entry.subject.id] = Object.freeze({ entry, task });
+	}
 	const reports = Object.create(null);
 	for (const entry of active.journal.filter(
 		(candidate) =>
@@ -1653,53 +1696,10 @@ function deriveRetainedReportAuthorityUnchecked(active, stateRoot) {
 				`report-harvest-${entry.subject.id}-${entry.subject.generation}`
 		)
 			fail("bookkeeping_unknown", "accepted report journal subject is invalid");
-		const matchingTaskEntries = active.journal.filter(
-			(candidate) =>
-				candidate.operation_type === "task.publish" &&
-				candidate.phase === "observed" &&
-				candidate.subject.id === entry.subject.id,
-		);
-		if (matchingTaskEntries.length !== 1)
-			fail(
-				"bookkeeping_unknown",
-				"accepted report task authority is missing or duplicated",
-			);
-		const taskEntry = matchingTaskEntries[0];
-		validateGeneration(
-			taskEntry.subject.generation,
-			"accepted report task generation",
-		);
-		if (
-			taskEntry.subject.kind !== "task" ||
-			taskEntry.operation_id !==
-				`task-publish-${entry.subject.id}-${taskEntry.subject.generation}`
-		)
-			fail("bookkeeping_unknown", "accepted task journal subject is invalid");
-		const taskPath = join(
-			active.paths.tasksDir,
-			entry.subject.id,
-			`${taskEntry.subject.generation}.json`,
-		);
-		const taskBytes = readStablePrivateBytes(taskPath, {
-			root: stateRoot,
-			maxBytes: 262_144,
-		});
-		const task = parseTaskBytes(taskBytes);
-		if (!taskBytes.equals(Buffer.from(canonicalJson(task))))
-			fail("bookkeeping_unknown", "retained task bytes are not canonical");
-		if (
-			task.role.name !== entry.subject.id ||
-			task.task_generation !== taskEntry.subject.generation ||
-			task.task_digest !== taskEntry.result_digest ||
-			task.scope.repository.key !== active.state.repository.key ||
-			task.scope.workspace_id !== active.state.workspace_id ||
-			task.scope.run_id !== active.state.run_id ||
-			task.scope.run_generation !== active.state.generation
-		)
-			fail(
-				"bookkeeping_unknown",
-				"retained task bytes do not match journal and run authority",
-			);
+		const taskAuthority = tasks[entry.subject.id];
+		if (!taskAuthority)
+			fail("bookkeeping_unknown", "accepted report task authority is missing");
+		const { entry: taskEntry, task } = taskAuthority;
 		const reportPath = join(
 			active.paths.reportsDir,
 			entry.subject.id,
