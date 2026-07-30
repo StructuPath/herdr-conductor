@@ -970,13 +970,24 @@ export async function runLiveStage2Evidence({
 		priorPluginState = currentPluginState();
 		command("herdr", ["plugin", "link", "--enabled", pluginCheckout]);
 		pluginMutated = true;
-		assert.deepEqual(currentPluginState(), {
-			presence: "local",
-			plugin_id: PLUGIN_ID,
-			plugin_root: realpathSync(pluginCheckout),
-			enabled: true,
-			source: { kind: "local" },
-		});
+		const linkedPluginState = currentPluginState();
+		assert.deepEqual(
+			{
+				presence: linkedPluginState.presence,
+				plugin_id: linkedPluginState.plugin_id,
+				plugin_root: linkedPluginState.plugin_root,
+				enabled: linkedPluginState.enabled,
+				source: linkedPluginState.source,
+			},
+			{
+				presence: "local",
+				plugin_id: PLUGIN_ID,
+				plugin_root: realpathSync(pluginCheckout),
+				enabled: true,
+				source: { kind: "local" },
+			},
+		);
+		assert.match(linkedPluginState.record_sha256, /^[a-f0-9]{64}$/);
 		const stateRoot = realpathSync(join(plane.rootPath, "state"));
 		const repository = createRepository(
 			join(plane.rootPath, "repositories", "product"),
