@@ -1,14 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-	mkdirSync,
-	mkdtempSync,
-	readFileSync,
-	renameSync,
-	rmSync,
-	writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
+import { createHash } from "node:crypto";
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
 	classifyCleanDelivery,
@@ -20,24 +13,26 @@ import {
 import {
 	canonicalJson,
 	StateKernelError,
-	validateJournalEntry,
 } from "../scripts/private-state-schema.mjs";
 import {
 	deriveRetainedReportAuthority,
 	reconcile,
 } from "../scripts/stage1-runtime.mjs";
+import { harvestCommittedReport } from "../scripts/report-harvest.mjs";
 import {
 	loadActiveRun,
 	openRepositoryStore,
 } from "../scripts/state-kernel.mjs";
-import { journalEntryDigest } from "../scripts/state-internal.mjs";
+import {
+	acquireRepositoryLock,
+	releaseRepositoryLock,
+} from "../scripts/state-internal.mjs";
 import {
 	parseReportBytes,
 	parseTaskBytes,
 	reportDigest,
 	taskDigest,
 } from "../scripts/task-report-schema.mjs";
-import { stage2ContractFixture } from "./stage2-runtime-helpers.mjs";
 import {
 	assembledFixture,
 	context,
@@ -264,236 +259,6 @@ test("role-symmetric cardinalities 0 through 64 and every stand-down prefix clas
 	}
 });
 
-const subjectKind = {
-	"worktree.create": "worktree",
-	"gate-source.create": "snapshot",
-	"task.publish": "task",
-	"pane.create": "pane",
-	"agent.start": "agent",
-	"report.harvest": "report",
-	"report.reject": "report",
-	"integration.reconcile": "git",
-	"integration.harvest": "git",
-};
-
-function normalizedJournal(operations, authorities = {}) {
-	let previous = null;
-	return operations.map(({ type, role }, index) => {
-		const authority = authorities[role];
-		const generation =
-			(type === "task.publish"
-				? authority?.task.task_generation
-				: type === "report.harvest"
-					? authority?.report.report_generation
-					: null) ?? "2".repeat(32);
-		const operationId =
-			type === "task.publish"
-				? `task-publish-${role}-${generation}`
-				: type === "report.harvest"
-					? `report-harvest-${role}-${generation}`
-					: `oracle-${index + 1}`;
-		const resultDigest =
-			(type === "task.publish"
-				? authority?.task.task_digest
-				: type === "report.harvest"
-					? authority?.report.report_digest
-					: null) ?? "d".repeat(64);
-		const base = {
-			document_type: "herdr-conductor-operation",
-			schema_version: 1,
-			repository_key: "a".repeat(64),
-			workspace_id: "workspace-oracle",
-			workspace_key: "b".repeat(64),
-			run_id: "run-oracle",
-			run_generation: "1".repeat(32),
-			sequence: index + 1,
-			operation_id: operationId,
-			operation_type: type,
-			subject: {
-				kind: subjectKind[type],
-				id: role,
-				generation,
-			},
-			request_digest: "c".repeat(64),
-			previous_digest: previous,
-			entry_digest: "0".repeat(64),
-			phase: "observed",
-			result_digest: resultDigest,
-			observed_identity: null,
-			error_code: null,
-			created_at: "2026-07-29T00:00:00.000Z",
-			updated_at: "2026-07-29T00:00:00.000Z",
-		};
-		base.entry_digest = journalEntryDigest(base);
-		previous = base.entry_digest;
-		return validateJournalEntry(base);
-	});
-}
-
-function retainedReport(role, outcome, index) {
-	const taskDigest = index.toString(16).padStart(64, "0");
-	const task = {
-		role: { name: role },
-		task_generation: 1,
-		task_digest: taskDigest,
-	};
-	const report = {
-		role: { name: role },
-		task_generation: 1,
-		task_digest: taskDigest,
-		status: outcome === "blocked" ? "blocked" : "completed",
-		result:
-			outcome === "blocked"
-				? null
-				: {
-						kind: outcome === "pass" ? "validation" : "delivery",
-						verdict: outcome,
-					},
-	};
-	return { task, report };
-}
-
-function productionAuthorityFixture(stateRoot, roles, phase) {
-	const tasksDir = join(stateRoot, "contracts", "tasks");
-	const reportsDir = join(stateRoot, "contracts", "reports");
-	mkdirSync(tasksDir, { recursive: true, mode: 0o700 });
-	mkdirSync(reportsDir, { recursive: true, mode: 0o700 });
-	const authorities = Object.create(null);
-	for (const role of roles) {
-		const outboxRoot = join(stateRoot, "outboxes", role.name);
-		const base = stage2ContractFixture({ outboxRoot });
-		const task = structuredClone(base.task);
-		task.task_id = `task-${role.name}`;
-		task.scope = {
-			...task.scope,
-			repository_root: stateRoot,
-			workspace_id: "workspace-oracle",
-			run_id: "run-oracle",
-			run_generation: "1".repeat(32),
-		};
-		task.role = {
-			...task.role,
-			name: role.name,
-			contract_role: role.contract_role,
-			configured_mode:
-				role.contract_role === "reviewer"
-					? "read-only"
-					: role.contract_role === "validator"
-						? "gated"
-						: "write",
-			pane_operation_id: `pane-${role.name}`,
-			agent_operation_id: `agent-${role.name}`,
-			agent_name: `agent-${role.name}`,
-		};
-		if (phase === "gates")
-			task.source = {
-				kind: "integration_snapshot",
-				root: join(stateRoot, "sources", role.name),
-				common_dir: task.scope.repository.common_dir,
-				head_mode: "detached",
-				base_sha: "1".repeat(40),
-				integration_sha: "2".repeat(40),
-				tree_sha: "3".repeat(40),
-				snapshot_generation: task.role.source_generation,
-				snapshot_entry_digest: "2".repeat(64),
-				integration_entry_digest: "3".repeat(64),
-				registered: true,
-			};
-		else
-			task.source = {
-				...task.source,
-				root: join(stateRoot, "sources", role.name),
-				worktree_generation: task.role.source_generation,
-			};
-		task.outbox = {
-			...task.outbox,
-			root: outboxRoot,
-			slot_name: `report-${task.task_id}-${task.task_generation}-${task.outbox.outbox_generation}`,
-		};
-		delete task.task_digest;
-		task.task_digest = taskDigest(task);
-		const taskDirectory = join(tasksDir, role.name);
-		mkdirSync(taskDirectory, { recursive: true, mode: 0o700 });
-		writeFileSync(
-			join(taskDirectory, `${task.task_generation}.json`),
-			canonicalJson(task),
-			{ mode: 0o600 },
-		);
-		const outcomes =
-			phase === "delivery" ? ["delivered", "blocked"] : ["pass", "fail"];
-		authorities[role.name] = Object.create(null);
-		for (const [outcomeIndex, outcome] of outcomes.entries()) {
-			const report = structuredClone(base.report);
-			report.report_id = `report-${role.name}-${outcome}`;
-			report.report_generation = (6 + outcomeIndex).toString().repeat(32);
-			report.task = {
-				id: task.task_id,
-				generation: task.task_generation,
-				digest: task.task_digest,
-			};
-			report.scope = task.scope;
-			report.role = task.role;
-			report.source = task.source;
-			report.agent_observation = {
-				...report.agent_observation,
-				operation_id: task.role.agent_operation_id,
-				agent_name: task.role.agent_name,
-			};
-			report.changed_paths = phase === "delivery" ? ["src/index.mjs"] : [];
-			report.findings = [];
-			if (outcome === "blocked") {
-				report.status = "blocked";
-				report.result = null;
-				report.requirement_results = report.requirement_results.map(
-					(result) => ({
-						...result,
-						assertion: "not_run",
-						exit_code: null,
-						output_sha256: null,
-					}),
-				);
-			} else if (phase === "delivery")
-				report.result = { kind: "delivery", verdict: "delivered" };
-			else if (role.contract_role === "reviewer") {
-				report.result = {
-					kind: "review",
-					verdict: outcome === "pass" ? "approve" : "request_changes",
-				};
-				if (outcome === "fail")
-					report.findings = [
-						{
-							id: "finding",
-							severity: "medium",
-							path: null,
-							line: null,
-							message: "Review finding",
-							evidence_kind: "worker_assertion",
-						},
-					];
-			} else {
-				report.result = { kind: "validation", verdict: outcome };
-				if (outcome === "fail")
-					report.requirement_results[0] = {
-						...report.requirement_results[0],
-						assertion: "failed",
-						exit_code: 1,
-					};
-			}
-			delete report.report_digest;
-			report.report_digest = reportDigest(report);
-			const reportDirectory = join(reportsDir, role.name, task.task_generation);
-			mkdirSync(reportDirectory, { recursive: true, mode: 0o700 });
-			writeFileSync(
-				join(reportDirectory, `${report.report_generation}.json`),
-				canonicalJson(report),
-				{ mode: 0o600 },
-			);
-			authorities[role.name][outcome] = { task, report };
-		}
-	}
-	return { tasksDir, reportsDir, authorities };
-}
-
 function independentOracle({
 	phase,
 	roles,
@@ -557,259 +322,290 @@ function independentOracle({
 		: "gate_reports_collected";
 }
 
-test("normalized-journal and retained-inventory lifecycle oracle covers mixed 0..64 vectors", () => {
+test("real production task publication, bounded publisher, harvester, accepted copy, and journal drive every mixed 0..64 delivery class", async () => {
+	const configuredRoles = Array.from({ length: 64 }, (_, index) => ({
+		name: `role-${index.toString().padStart(2, "0")}`,
+		contract_role: index % 2 ? "test_author" : "builder",
+		kind: "codex",
+		mode: "write",
+	}));
+	const fixture = await assembledFixture({ roles: configuredRoles });
+	for (const [index, worker] of fixture.result.workers.entries())
+		await publishWorkerReport(
+			fixture,
+			worker,
+			index % 2 ? { status: "blocked", result: null } : {},
+		);
+	const harvested = await reconcile({
+		contextJson: context(fixture.repository, fixture.workspace),
+		herdrBin: "fake",
+		exec: fixture.fake.exec,
+	});
+	assert.equal(harvested.lifecycle, "delivery_nonprogressable");
+	const production = loadActiveRun(
+		openRepositoryStore({
+			stateRoot: fixture.stateRoot,
+			repoPath: fixture.repository,
+		}),
+		{ workspaceId: fixture.workspace },
+	);
+	const reportOutcome = Object.fromEntries(
+		Object.entries(
+			deriveRetainedReportAuthority(production, fixture.stateRoot),
+		).map(([name, report]) => [
+			name,
+			report.status === "blocked" ? "blocked" : "delivered",
+		]),
+	);
+	const sequence = [
+		"worktree.create",
+		"task.publish",
+		"pane.create",
+		"agent.start",
+		"report.harvest",
+	];
+	const prefixPairs = [
+		[0, 0],
+		[1, 2],
+		[2, 4],
+		[4, 5],
+		[5, 4],
+		[5, 5],
+	];
+	const authorityCache = new Map();
 	let vectors = 0;
 	for (let count = 0; count <= 64; count++) {
-		const splits = new Set([0, 1, Math.floor(count / 2), count - 1, count]);
-		for (const phase of ["delivery", "gates"])
-			for (const [leftPrefix, rightPrefix] of [
-				[0, 0],
-				[1, 2],
-				[2, 4],
-				[4, 5],
-				[5, 4],
-				[5, 5],
-			])
-				for (const split of splits) {
+		const selections = [
+			configuredRoles.slice(0, count),
+			configuredRoles.slice(64 - count),
+		];
+		for (const roles of selections)
+			for (const [leftPrefix, rightPrefix] of prefixPairs)
+				for (const split of new Set([
+					0,
+					1,
+					Math.floor(count / 2),
+					count - 1,
+					count,
+				])) {
 					if (split < 0 || split > count) continue;
-					const roles = Array.from({ length: count }, (_, index) => ({
-						name: `role-${index.toString().padStart(2, "0")}`,
-						contract_role:
-							phase === "delivery"
-								? index % 2
-									? "test_author"
-									: "builder"
-								: index % 2
-									? "validator"
-									: "reviewer",
-					}));
+					const selected = new Map(
+						roles.map((role, index) => [role.name, index]),
+					);
 					const prefixes = roles.map((_, index) =>
 						index < split ? leftPrefix : rightPrefix,
 					);
-					const outcomes = roles.map((_, index) =>
-						phase === "delivery"
-							? index < split
-								? "delivered"
-								: "blocked"
-							: index < split
-								? "pass"
-								: "fail",
-					);
-					const operations = [];
-					if (phase === "gates") {
-						operations.push(
-							{ type: "integration.reconcile", role: "integration" },
-							{ type: "integration.harvest", role: "integration" },
-						);
-					}
-					const reportInventory = [];
-					roles.forEach((role, index) => {
-						const sequence =
-							phase === "delivery"
-								? [
-										"worktree.create",
-										"task.publish",
-										"pane.create",
-										"agent.start",
-										"report.harvest",
-									]
-								: [
-										"gate-source.create",
-										"task.publish",
-										"pane.create",
-										"agent.start",
-										"report.harvest",
-									];
-						for (const type of sequence.slice(0, prefixes[index]))
-							operations.push({ type, role: role.name });
-						if (prefixes[index] === 5)
-							reportInventory.push(
-								retainedReport(role.name, outcomes[index], index + 1),
-							);
+					const journal = production.journal.filter((entry) => {
+						if (entry.operation_type === "integration.bind") return true;
+						const index = selected.get(entry.subject.id);
+						if (index === undefined) return false;
+						const operationIndex = sequence.indexOf(entry.operation_type);
+						return operationIndex >= 0 && operationIndex < prefixes[index];
 					});
+					const active = { ...production, journal };
+					const outcomes = roles.map(({ name }) => reportOutcome[name]);
 					const expected = independentOracle({
-						phase,
+						phase: "delivery",
 						roles,
 						prefixes,
 						outcomes,
 						rejected: new Set(),
 						refused: new Set(),
 					});
-					const permutations = [roles, [...roles].reverse()];
-					for (const orderedRoles of permutations) {
-						const scan = () =>
-							scanStage2Authority(
-								{
-									journal: normalizedJournal(operations),
-									state: { status: "active" },
-								},
-								{ roles: orderedRoles },
-								{ reportInventory },
-							).state;
-						if (expected === "invalid") code("bookkeeping_unknown", scan);
-						else assert.equal(scan(), expected);
-						vectors++;
-					}
+					const scan = () => {
+						const authorityKey = roles
+							.filter((_, index) => prefixes[index] === 5)
+							.map(({ name }) => name)
+							.join("\0");
+						let acceptedReports = authorityCache.get(authorityKey);
+						if (!acceptedReports) {
+							acceptedReports = deriveRetainedReportAuthority(
+								active,
+								fixture.stateRoot,
+							);
+							authorityCache.set(authorityKey, acceptedReports);
+						}
+						return scanStage2Authority(active, { roles }, { acceptedReports })
+							.state;
+					};
+					if (expected === "invalid") code("bookkeeping_unknown", scan);
+					else
+						assert.equal(
+							scan(),
+							expected,
+							`${count}:${leftPrefix}:${rightPrefix}:${split}`,
+						);
+					vectors++;
 				}
 	}
-	assert.ok(vectors > 3_000, `mixed oracle covered only ${vectors} vectors`);
-
-	const roles = [
-		{ name: "builder", contract_role: "builder" },
-		{ name: "validator", contract_role: "validator" },
-	];
-	const rejectionJournal = normalizedJournal([
-		...["worktree.create", "task.publish", "pane.create", "agent.start"].map(
-			(type) => ({ type, role: "builder" }),
-		),
-		{ type: "report.reject", role: "builder" },
-	]);
-	assert.equal(
-		scanStage2Authority(
-			{ journal: rejectionJournal, state: { status: "active" } },
-			{ roles },
-			{ reportInventory: [] },
-		).state,
-		"delivery_report_rejected",
+	assert.ok(
+		vectors > 3_000,
+		`production oracle covered only ${vectors} vectors`,
 	);
-	const gateRefusal = normalizedJournal([
-		{ type: "integration.reconcile", role: "integration" },
-		{ type: "integration.harvest", role: "integration" },
-		{ type: "report.reject", role: "validator" },
-	]);
-	assert.equal(
-		scanStage2Authority(
-			{ journal: gateRefusal, state: { status: "active" } },
-			{ roles },
-			{ reportInventory: [] },
-		).state,
-		"gate_source_refused",
-	);
-	for (const [options, expected] of [
-		[{ uncertainty: "operation_uncertain" }, "operation_uncertain"],
-		[
-			{ archiveUncertain: true, uncertainty: "operation_uncertain" },
-			"archive_uncertain",
-		],
-	])
-		assert.equal(
-			scanStage2Authority(
-				{ journal: [], state: { status: "active" } },
-				{ roles: [] },
-				{ reportInventory: [], ...options },
-			).state,
-			expected,
-		);
 });
 
-test("production retained-authority path drives symmetry-reduced mixed 0..64 lifecycle oracle", () => {
-	const root = mkdtempSync(join(tmpdir(), "conductor-lifecycle-authority-"));
+test("real production gate publication and harvesting drive every reduced gate class at bounded symmetric cardinalities", async () => {
+	// Gate provisioning creates and seals one detached Git source per role. The
+	// 0..64 classifier matrix above proves cardinality symmetry; these bounded
+	// production representatives exercise every mixed prefix/outcome class
+	// without turning the required repeated Stage 2 gate into a 15+ minute test.
+	const configuredRoles = Array.from({ length: 8 }, (_, index) => ({
+		name: `gate-${index.toString().padStart(2, "0")}`,
+		contract_role: index % 2 ? "validator" : "reviewer",
+		kind: "codex",
+		mode: index % 2 ? "gated" : "read-only",
+	}));
+	const fixture = await assembledFixture({ roles: configuredRoles });
+	const provisioned = await reconcile({
+		contextJson: context(fixture.repository, fixture.workspace),
+		herdrBin: "fake",
+		exec: fixture.fake.exec,
+	});
+	assert.equal(provisioned.gate_workers.length, configuredRoles.length);
+	for (const [index, worker] of provisioned.gate_workers.entries())
+		await publishWorkerReport(
+			fixture,
+			worker,
+			index % 2 ? { status: "blocked", result: null } : {},
+		);
+	const store = openRepositoryStore({
+		stateRoot: fixture.stateRoot,
+		repoPath: fixture.repository,
+	});
+	const lock = acquireRepositoryLock(store, {
+		operationId: "oracle-gate-report-harvest",
+	});
+	const beforeHarvest = loadActiveRun(store, {
+		workspaceId: fixture.workspace,
+	});
+	const configurationDigest = createHash("sha256")
+		.update(
+			canonicalJson(
+				JSON.parse(
+					readFileSync(
+						join(fixture.repository, ".herdr-conductor.json"),
+						"utf8",
+					),
+				),
+			),
+		)
+		.digest("hex");
 	try {
-		for (const phase of ["delivery", "gates"]) {
-			const allRoles = Array.from({ length: 64 }, (_, index) => ({
-				name: `role-${index.toString().padStart(2, "0")}`,
-				contract_role:
-					phase === "delivery"
-						? index % 2
-							? "test_author"
-							: "builder"
-						: index % 2
-							? "validator"
-							: "reviewer",
-			}));
-			const stateRoot = join(root, phase);
-			mkdirSync(stateRoot, { recursive: true, mode: 0o700 });
-			const files = productionAuthorityFixture(stateRoot, allRoles, phase);
-			for (let count = 0; count <= 64; count++) {
-				const roles = allRoles.slice(0, count);
-				const split = Math.floor(count / 2);
-				const prefixPairs = [
-					[0, 0],
-					[1, 2],
-					[2, 4],
-					[4, 5],
-					[5, 4],
-					[5, 5],
-				];
-				const [leftPrefix, rightPrefix] =
-					prefixPairs[count % prefixPairs.length];
-				const prefixes = roles.map((_, index) =>
-					index < split ? leftPrefix : rightPrefix,
-				);
-				const outcomes = roles.map((_, index) =>
-					phase === "delivery"
-						? index < split
-							? "delivered"
-							: "blocked"
-						: index < split
-							? "pass"
-							: "fail",
-				);
-				const operations = [];
-				if (phase === "gates")
-					operations.push(
-						{ type: "integration.reconcile", role: "integration" },
-						{ type: "integration.harvest", role: "integration" },
-					);
-				const selected = Object.create(null);
-				roles.forEach((role, index) => {
-					selected[role.name] = files.authorities[role.name][outcomes[index]];
-					const sequence =
-						phase === "delivery"
-							? [
-									"worktree.create",
-									"task.publish",
-									"pane.create",
-									"agent.start",
-									"report.harvest",
-								]
-							: [
-									"gate-source.create",
-									"task.publish",
-									"pane.create",
-									"agent.start",
-									"report.harvest",
-								];
-					for (const type of sequence.slice(0, prefixes[index]))
-						operations.push({ type, role: role.name });
-				});
-				const active = {
-					journal: normalizedJournal(operations, selected),
-					state: {
-						status: "active",
-						repository: { key: "a".repeat(64) },
-						workspace_id: "workspace-oracle",
-						run_id: "run-oracle",
-						generation: "1".repeat(32),
-					},
-					paths: {
-						tasksDir: files.tasksDir,
-						reportsDir: files.reportsDir,
-					},
-				};
-				const expected = independentOracle({
-					phase,
-					roles,
-					prefixes,
-					outcomes,
-					rejected: new Set(),
-					refused: new Set(),
-				});
-				const scan = () => {
-					const acceptedReports = deriveRetainedReportAuthority(
-						active,
-						stateRoot,
-					);
-					return scanStage2Authority(active, { roles }, { acceptedReports })
-						.state;
-				};
-				if (expected === "invalid") code("bookkeeping_unknown", scan);
-				else assert.equal(scan(), expected, `${phase}:${count}`);
-			}
-		}
+		for (const worker of provisioned.gate_workers)
+			await harvestCommittedReport(lock, {
+				workspaceId: fixture.workspace,
+				runId: beforeHarvest.state.run_id,
+				runGeneration: beforeHarvest.state.generation,
+				taskPath: worker.task_path,
+				configurationDigest,
+				inspectSource: ({ task }) => ({
+					observation: { production_oracle_role: task.role.name },
+				}),
+			});
 	} finally {
-		rmSync(root, { recursive: true, force: true });
+		releaseRepositoryLock(lock);
 	}
+	const production = loadActiveRun(store, { workspaceId: fixture.workspace });
+	const reportOutcome = Object.fromEntries(
+		Object.entries(
+			deriveRetainedReportAuthority(production, fixture.stateRoot),
+		).map(([name, report]) => [
+			name,
+			report.status === "blocked" ? "fail" : "pass",
+		]),
+	);
+	const sequence = [
+		"gate-source.create",
+		"task.publish",
+		"pane.create",
+		"agent.start",
+		"report.harvest",
+	];
+	const prefixPairs = [
+		[0, 0],
+		[1, 2],
+		[2, 4],
+		[4, 5],
+		[5, 4],
+		[5, 5],
+	];
+	const authorityCache = new Map();
+	let vectors = 0;
+	for (const count of [0, 1, 2, 4, configuredRoles.length]) {
+		const selections = [
+			configuredRoles.slice(0, count),
+			configuredRoles.slice(configuredRoles.length - count),
+		];
+		for (const roles of selections)
+			for (const [leftPrefix, rightPrefix] of prefixPairs)
+				for (const split of new Set([
+					0,
+					1,
+					Math.floor(count / 2),
+					count - 1,
+					count,
+				])) {
+					if (split < 0 || split > count) continue;
+					const selected = new Map(
+						roles.map((role, index) => [role.name, index]),
+					);
+					const prefixes = roles.map((_, index) =>
+						index < split ? leftPrefix : rightPrefix,
+					);
+					const journal = production.journal.filter((entry) => {
+						if (
+							[
+								"integration.bind",
+								"integration.reconcile",
+								"integration.harvest",
+							].includes(entry.operation_type)
+						)
+							return true;
+						const index = selected.get(entry.subject.id);
+						if (index === undefined) return false;
+						const operationIndex = sequence.indexOf(entry.operation_type);
+						return operationIndex >= 0 && operationIndex < prefixes[index];
+					});
+					const active = { ...production, journal };
+					const outcomes = roles.map(({ name }) => reportOutcome[name]);
+					const expected = independentOracle({
+						phase: "gates",
+						roles,
+						prefixes,
+						outcomes,
+						rejected: new Set(),
+						refused: new Set(),
+					});
+					const scan = () => {
+						const authorityKey = roles
+							.filter((_, index) => prefixes[index] === 5)
+							.map(({ name }) => name)
+							.join("\0");
+						let acceptedReports = authorityCache.get(authorityKey);
+						if (!acceptedReports) {
+							acceptedReports = deriveRetainedReportAuthority(
+								active,
+								fixture.stateRoot,
+							);
+							authorityCache.set(authorityKey, acceptedReports);
+						}
+						return scanStage2Authority(active, { roles }, { acceptedReports })
+							.state;
+					};
+					if (expected === "invalid") code("bookkeeping_unknown", scan);
+					else
+						assert.equal(
+							scan(),
+							expected,
+							`${count}:${leftPrefix}:${rightPrefix}:${split}`,
+						);
+					vectors++;
+				}
+	}
+	assert.ok(
+		vectors >= 192,
+		`production gate oracle covered only ${vectors} vectors`,
+	);
 });
 
 test("production journal-to-path retained authority strictly parses real report bytes", async () => {

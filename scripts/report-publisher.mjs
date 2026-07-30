@@ -315,7 +315,12 @@ export async function publishReportFromStdin(options = {}) {
 		task: authority.task,
 	});
 	if (existing.state === "raw_committed")
-		fail("replay_refused", "report slot is already committed");
+		fail(
+			existing.report.report_digest === report.report_digest
+				? "replay_refused"
+				: "equivocal_report",
+			"report slot is already committed",
+		);
 	if (existing.state !== "raw_empty")
 		fail(
 			"recovery_required",

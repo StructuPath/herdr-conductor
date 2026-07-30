@@ -11,7 +11,10 @@ import {
 import { join } from "node:path";
 import { Readable } from "node:stream";
 import { reconcile } from "../scripts/stage1-runtime.mjs";
-import { canonicalJson } from "../scripts/private-state-schema.mjs";
+import {
+	canonicalJson,
+	StateKernelError,
+} from "../scripts/private-state-schema.mjs";
 import { publishReportFromStdin } from "../scripts/report-publisher.mjs";
 import { reportDigest } from "../scripts/task-report-schema.mjs";
 import {
@@ -180,112 +183,289 @@ const roles = [
 	},
 ];
 
-test("malformed, foreign, stale, digest, UTF-8, and framing mutations have zero independent effects", async () => {
-	for (const mutation of [
+test("every normative error and action seam preserves its exact full forbidden-effect contract", async () => {
+	const injectedCodes = [
+		"state_unknown",
+		"foreign_repository",
+		"foreign_workspace",
+		"foreign_run",
+		"foreign_generation",
+		"stale_source",
+		"source_policy_violation",
+		"path_mismatch",
+		"lock_unknown",
+		"durability_unknown",
+		"capability_unavailable",
+		"target_drift",
+		"gate_timing",
+	];
+	const rows = [
 		{
-			name: "malformed",
-			expectedCode: "invalid_json",
-			bytes: () => Buffer.from("{"),
+			name: "malformed JSON",
+			code: "invalid_json",
+			input: () => Readable.from([Buffer.from("{")]),
+		},
+		{
+			name: "duplicate JSON key",
+			code: "duplicate_json_key",
+			input: ({ report }) =>
+				Readable.from([
+					Buffer.from(
+						canonicalJson(report).replace(
+							"{",
+							'{"document_type":"herdr-conductor-report",',
+						),
+					),
+				]),
+		},
+		{
+			name: "input read error",
+			code: "input_read_error",
+			input: () =>
+				new Readable({
+					read() {
+						this.destroy(new Error("bounded input failure"));
+					},
+				}),
+		},
+		{
+			name: "wrong version",
+			code: "wrong_version",
+			input: ({ report }) =>
+				Readable.from([
+					Buffer.from(canonicalJson({ ...report, schema_version: 2 })),
+				]),
 		},
 		{
 			name: "invalid UTF-8",
-			expectedCode: "invalid_json",
-			bytes: () => Buffer.from([0xc3]),
+			code: "invalid_json",
+			input: () => Readable.from([Buffer.from([0xc3])]),
 		},
 		{
 			name: "noncanonical framing",
-			expectedCode: "digest_mismatch",
-			bytes: ({ report }) => Buffer.from(JSON.stringify(report)),
+			code: "digest_mismatch",
+			input: ({ report }) =>
+				Readable.from([Buffer.from(JSON.stringify(report))]),
 		},
 		{
-			name: "wrong digest",
-			expectedCode: "digest_mismatch",
-			bytes: ({ report }) =>
-				Buffer.from(
-					canonicalJson({ ...report, report_digest: "0".repeat(64) }),
-				),
+			name: "wrong report digest",
+			code: "digest_mismatch",
+			input: ({ report }) =>
+				Readable.from([
+					Buffer.from(
+						canonicalJson({ ...report, report_digest: "0".repeat(64) }),
+					),
+				]),
 		},
 		{
-			name: "foreign scope",
-			expectedCode: "foreign_role",
-			bytes: ({ report }) => {
-				const draft = {
+			name: "foreign task scope",
+			code: "foreign_role",
+			input: ({ report }) => {
+				const changed = {
 					...report,
 					scope: { ...report.scope, workspace_id: "foreign-workspace" },
 				};
-				delete draft.report_digest;
-				return Buffer.from(
-					canonicalJson({ ...draft, report_digest: reportDigest(draft) }),
-				);
+				delete changed.report_digest;
+				changed.report_digest = reportDigest(changed);
+				return Readable.from([Buffer.from(canonicalJson(changed))]);
 			},
 		},
 		{
-			name: "stale task",
-			expectedCode: "foreign_role",
-			bytes: ({ report }) => {
-				const draft = {
+			name: "stale task generation",
+			code: "foreign_role",
+			input: ({ report }) => {
+				const changed = {
 					...report,
-					task: { ...report.task, digest: "f".repeat(64) },
+					task: { ...report.task, generation: "f".repeat(32) },
 				};
-				delete draft.report_digest;
-				return Buffer.from(
-					canonicalJson({ ...draft, report_digest: reportDigest(draft) }),
-				);
+				delete changed.report_digest;
+				changed.report_digest = reportDigest(changed);
+				return Readable.from([Buffer.from(canonicalJson(changed))]);
 			},
 		},
 		{
 			name: "oversized framing",
-			expectedCode: "input_too_large",
-			bytes: () => Buffer.alloc(1_048_577, 0x61),
+			code: "input_too_large",
+			input: () => Readable.from([Buffer.alloc(1_048_577, 0x61)]),
+		},
+		{
+			name: "replayed report",
+			code: "replay_refused",
+			prepare: async ({ fixture, value }) =>
+				publishReportFromStdin({
+					input: Readable.from([Buffer.from(canonicalJson(value.report))]),
+					stateRoot: fixture.stateRoot,
+					authorizeTask: () => ({ task: value.task }),
+				}),
+			input: ({ report }) =>
+				Readable.from([Buffer.from(canonicalJson(report))]),
+		},
+		{
+			name: "equivocal report",
+			code: "equivocal_report",
+			prepare: async ({ fixture, value }) =>
+				publishReportFromStdin({
+					input: Readable.from([Buffer.from(canonicalJson(value.report))]),
+					stateRoot: fixture.stateRoot,
+					authorizeTask: () => ({ task: value.task }),
+				}),
+			input: ({ report }) => {
+				const changed = { ...report, summary: "Equivocal replay" };
+				delete changed.report_digest;
+				changed.report_digest = reportDigest(changed);
+				return Readable.from([Buffer.from(canonicalJson(changed))]);
+			},
+		},
+		...injectedCodes.map((code) => ({
+			name: code,
+			code,
+			input: ({ report }) =>
+				Readable.from([Buffer.from(canonicalJson(report))]),
+			inject: true,
+		})),
+	];
+	for (const row of rows) {
+		const fixture = await assembledFixture({ roles });
+		const worker = fixture.result.workers[0];
+		const value = await buildWorkerReport(fixture, worker);
+		await row.prepare?.({ fixture, worker, value });
+		const before = forbiddenEffectSnapshot(fixture);
+		const outboxBefore = readdirSync(worker.outbox_slot).sort();
+		await assert.rejects(
+			publishReportFromStdin({
+				input: row.input(value),
+				stateRoot: fixture.stateRoot,
+				authorizeTask: row.inject
+					? () => {
+							throw new StateKernelError(row.code, `${row.name} fixture`);
+						}
+					: () => ({ task: value.task }),
+			}),
+			(error) => error.code === row.code,
+			row.name,
+		);
+		assert.deepEqual(forbiddenEffectSnapshot(fixture), before, row.name);
+		assert.deepEqual(
+			readdirSync(worker.outbox_slot).sort(),
+			outboxBefore,
+			row.name,
+		);
+	}
+
+	for (const row of [
+		{
+			name: "producer HEAD/tree drift",
+			code: "stale_source",
+			rejectionClass: "source_identity",
+			mutate(worker) {
+				writeFileSync(
+					join(worker.cwd, "src", "drift.mjs"),
+					"export default 2;\n",
+				);
+				git(worker.cwd, "add", "src/drift.mjs");
+				git(worker.cwd, "commit", "-qm", "late head and tree drift");
+			},
+		},
+		{
+			name: "producer ref drift",
+			code: "stale_source",
+			throws: true,
+			mutate(worker) {
+				git(worker.cwd, "branch", "-m", "late-ref-drift");
+			},
+		},
+		{
+			name: "producer index drift",
+			code: "source_policy_violation",
+			rejectionClass: "source_dirty",
+			mutate(worker) {
+				writeFileSync(
+					join(worker.cwd, "src", "drift.mjs"),
+					"export default 3;\n",
+				);
+				git(worker.cwd, "add", "src/drift.mjs");
+			},
+		},
+		{
+			name: "producer tracked-byte drift",
+			code: "source_policy_violation",
+			rejectionClass: "source_dirty",
+			mutate(worker) {
+				writeFileSync(
+					join(worker.cwd, "src", "drift.mjs"),
+					"export default 4;\n",
+				);
+			},
+		},
+		{
+			name: "producer untracked drift",
+			code: "source_policy_violation",
+			rejectionClass: "source_dirty",
+			mutate(worker) {
+				writeFileSync(join(worker.cwd, "late-untracked.txt"), "late\n");
+			},
+		},
+		{
+			name: "producer ignored drift",
+			code: "source_policy_violation",
+			rejectionClass: "source_dirty",
+			mutate(worker) {
+				mkdirSync(join(worker.cwd, ".ignored"));
+				writeFileSync(join(worker.cwd, ".ignored", "late.txt"), "late\n");
+			},
 		},
 	]) {
 		const fixture = await assembledFixture({ roles });
 		const worker = fixture.result.workers[0];
-		const value = await buildWorkerReport(fixture, worker);
+		writeFileSync(join(worker.cwd, ".gitignore"), ".ignored/\n");
+		mkdirSync(join(worker.cwd, "src"));
+		writeFileSync(join(worker.cwd, "src", "drift.mjs"), "export default 1;\n");
+		git(worker.cwd, "add", ".gitignore", "src/drift.mjs");
+		git(worker.cwd, "commit", "-qm", "source drift fixture");
+		await publishWorkerReport(fixture, worker);
+		row.mutate(worker);
 		const before = forbiddenEffectSnapshot(fixture);
-		await assert.rejects(
-			publishReportFromStdin({
-				input: Readable.from([mutation.bytes(value)]),
-				stateRoot: fixture.stateRoot,
-				authorizeTask: () => ({ task: value.task }),
-			}),
-			(error) => error.code === mutation.expectedCode,
-			mutation.name,
+		const reconcileOptions = {
+			contextJson: context(fixture.repository, fixture.workspace),
+			exec: fixture.fake.exec,
+			herdrBin: "fake",
+		};
+		if (row.throws) {
+			await assert.rejects(
+				reconcile(reconcileOptions),
+				(error) => error.code === row.code,
+				row.name,
+			);
+			assert.deepEqual(forbiddenEffectSnapshot(fixture), before, row.name);
+			continue;
+		}
+		const result = await reconcile(reconcileOptions);
+		assert.equal(result.lifecycle, "delivery_report_rejected", row.name);
+		const rejection = privateDocuments(fixture.stateRoot).find(
+			({ value }) =>
+				value.operation_type === "report.reject" && value.phase === "observed",
 		);
-		assert.deepEqual(forbiddenEffectSnapshot(fixture), before, mutation.name);
-		assert.deepEqual(readdirSync(worker.outbox_slot), [], mutation.name);
-	}
-});
-
-test("replayed and equivocal committed reports return exact code with zero full-snapshot effects", async () => {
-	for (const name of ["replayed", "equivocal"]) {
-		const fixture = await assembledFixture({ roles });
-		const worker = fixture.result.workers[0];
-		const value = await buildWorkerReport(fixture, worker);
-		await publishReportFromStdin({
-			input: Readable.from([Buffer.from(canonicalJson(value.report))]),
-			stateRoot: fixture.stateRoot,
-			authorizeTask: () => ({ task: value.task }),
-		});
-		const report =
-			name === "replayed"
-				? value.report
-				: (() => {
-						const changed = { ...value.report, summary: "Equivocal replay" };
-						delete changed.report_digest;
-						return { ...changed, report_digest: reportDigest(changed) };
-					})();
-		const before = forbiddenEffectSnapshot(fixture);
-		await assert.rejects(
-			publishReportFromStdin({
-				input: Readable.from([Buffer.from(canonicalJson(report))]),
-				stateRoot: fixture.stateRoot,
-				authorizeTask: () => ({ task: value.task }),
-			}),
-			(error) => error.code === "replay_refused",
-			name,
+		assert.equal(
+			rejection.value.observed_identity.failure_class,
+			row.rejectionClass,
+			`${row.name}: exact ${row.code} rejection class`,
 		);
-		assert.deepEqual(forbiddenEffectSnapshot(fixture), before, name);
+		const after = forbiddenEffectSnapshot(fixture);
+		assert.equal(after.reportRejections, before.reportRejections + 1, row.name);
+		assert.equal(after.journalAuthority, before.journalAuthority + 1, row.name);
+		const {
+			stateAuthorityBytes: _beforeState,
+			reportRejections: _beforeRejections,
+			journalAuthority: _beforeJournal,
+			...beforeEffects
+		} = before;
+		const {
+			stateAuthorityBytes: _afterState,
+			reportRejections: _afterRejections,
+			journalAuthority: _afterJournal,
+			...afterEffects
+		} = after;
+		assert.deepEqual(afterEffects, beforeEffects, row.name);
 	}
 });
 

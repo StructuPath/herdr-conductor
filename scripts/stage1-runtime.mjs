@@ -35,10 +35,7 @@ import {
 	scanStage2Authority,
 	standDownReasonForState,
 } from "./stage2-lifecycle.mjs";
-import {
-	computeChangedPaths,
-	validateProducerPathPolicy,
-} from "./source-policy.mjs";
+import { inspectProducerSource } from "./source-policy.mjs";
 import {
 	acquireRepositoryLock,
 	archiveActiveRun,
@@ -1451,24 +1448,22 @@ export async function reconcile({
 					active,
 					exec,
 				);
-				if (source.head_sha !== report.source.expected_sha)
-					fail("stale_source", "producer source changed after collection");
-				const changed = computeChangedPaths(
-					source.path,
-					authority.task.source.fork_sha,
-					source.head_sha,
-				);
-				validateProducerPathPolicy(
-					changed,
-					report.changed_paths,
+				const inspection = inspectProducerSource(
+					authority.task.source,
+					report.source,
 					authority.task.assignment,
 				);
+				if (
+					source.path !== inspection.observation.canonical_path ||
+					source.head_sha !== inspection.headSha
+				)
+					fail("stale_source", "producer source changed after collection");
 				return {
 					role_name: authority.task.role.name,
 					task_digest: authority.task.task_digest,
 					report_digest: report.report_digest,
-					source_sha: source.head_sha,
-					tree_sha: report.source.tree_sha,
+					source_sha: inspection.headSha,
+					tree_sha: inspection.treeSha,
 					source_generation: authority.task.role.source_generation,
 				};
 			});
@@ -1635,7 +1630,7 @@ function gateSourceRefusals(active, config, exec = defaultExec) {
 	return refused;
 }
 
-export function deriveRetainedReportAuthority(active, stateRoot) {
+function deriveRetainedReportAuthorityUnchecked(active, stateRoot) {
 	if (
 		!active?.paths?.tasksDir ||
 		!active?.paths?.reportsDir ||
@@ -1658,18 +1653,18 @@ export function deriveRetainedReportAuthority(active, stateRoot) {
 				`report-harvest-${entry.subject.id}-${entry.subject.generation}`
 		)
 			fail("bookkeeping_unknown", "accepted report journal subject is invalid");
-		const taskEntries = active.journal.filter(
+		const matchingTaskEntries = active.journal.filter(
 			(candidate) =>
 				candidate.operation_type === "task.publish" &&
 				candidate.phase === "observed" &&
 				candidate.subject.id === entry.subject.id,
 		);
-		if (taskEntries.length !== 1)
+		if (matchingTaskEntries.length !== 1)
 			fail(
 				"bookkeeping_unknown",
 				"accepted report task authority is missing or duplicated",
 			);
-		const taskEntry = taskEntries[0];
+		const taskEntry = matchingTaskEntries[0];
 		validateGeneration(
 			taskEntry.subject.generation,
 			"accepted report task generation",
@@ -1735,7 +1730,64 @@ export function deriveRetainedReportAuthority(active, stateRoot) {
 	return Object.freeze(reports);
 }
 
-function archivedStandDownReplay(archived, workspaceId, suppliedReason) {
+export function deriveRetainedReportAuthority(active, stateRoot) {
+	try {
+		return deriveRetainedReportAuthorityUnchecked(active, stateRoot);
+	} catch (error) {
+		if (
+			error instanceof StateKernelError &&
+			error.code === "bookkeeping_unknown"
+		)
+			throw error;
+		fail(
+			"bookkeeping_unknown",
+			"retained task or report authority is invalid",
+			error,
+		);
+	}
+}
+
+function retainedPaneAuthority(active) {
+	return exactObservedEntries(active, "pane.create")
+		.map((paneEntry) => {
+			const matchingAgents = active.journal.filter(
+				(entry) =>
+					entry.operation_type === "agent.start" &&
+					entry.phase === "observed" &&
+					entry.subject.id === paneEntry.subject.id &&
+					entry.observed_identity?.pane_id ===
+						paneEntry.observed_identity.pane_id,
+			);
+			if (matchingAgents.length > 1)
+				fail("bookkeeping_unknown", "pane has duplicate attached agents");
+			return {
+				subject: paneEntry.subject,
+				paneEntry,
+				agentEntry: matchingAgents[0] ?? null,
+				observedIdentity:
+					matchingAgents[0]?.observed_identity ?? paneEntry.observed_identity,
+			};
+		})
+		.sort((left, right) => {
+			const leftKey = `${left.subject.id}\0${left.subject.generation}\0${left.paneEntry.operation_id}\0${left.observedIdentity.pane_id}\0${left.observedIdentity.terminal_id}\0${left.observedIdentity.cwd}`;
+			const rightKey = `${right.subject.id}\0${right.subject.generation}\0${right.paneEntry.operation_id}\0${right.observedIdentity.pane_id}\0${right.observedIdentity.terminal_id}\0${right.observedIdentity.cwd}`;
+			return Buffer.compare(Buffer.from(leftKey), Buffer.from(rightKey));
+		});
+}
+
+function retainedCloseSet(panes) {
+	return panes.map((entry) => ({
+		role_name: entry.subject.id,
+		pane_generation: entry.subject.generation,
+		pane_entry_digest: entry.paneEntry.entry_digest,
+		pane_id: entry.observedIdentity.pane_id,
+		terminal_id: entry.observedIdentity.terminal_id,
+		cwd: entry.observedIdentity.cwd,
+		close_operation_id: `close-${entry.subject.id}-${entry.subject.generation}`,
+	}));
+}
+
+export function archivedStandDownReplay(archived, workspaceId, suppliedReason) {
 	const standDownEntries = archived.journal.filter(
 		(entry) =>
 			entry.operation_type === "run.stand-down.begin" &&
@@ -1776,6 +1828,7 @@ function archivedStandDownReplay(archived, workspaceId, suppliedReason) {
 		fail("bookkeeping_unknown", "archived stand-down identity is invalid");
 	const expectedOperationId = `stand-down-begin-${archived.state.generation}`;
 	if (
+		identity.source_journal_head !== standDownEntry.previous_digest ||
 		standDownEntry.operation_id !== expectedOperationId ||
 		standDownEntry.subject.kind !== "run" ||
 		standDownEntry.subject.id !== archived.state.run_id ||
@@ -1810,6 +1863,13 @@ function archivedStandDownReplay(archived, workspaceId, suppliedReason) {
 		identity.archive_operation_id !== archiveEntry.operation_id
 	)
 		fail("bookkeeping_unknown", "archived stand-down outcome is inconsistent");
+	const panes = retainedPaneAuthority(archived);
+	const expectedCloseSet = retainedCloseSet(panes);
+	if (canonicalJson(identity.close_set) !== canonicalJson(expectedCloseSet))
+		fail(
+			"bookkeeping_unknown",
+			"archived close set does not match retained pane authority",
+		);
 	const archiveDigest = sha256({
 		run_id: archived.state.run_id,
 		generation: archived.state.generation,
@@ -1826,6 +1886,13 @@ function archivedStandDownReplay(archived, workspaceId, suppliedReason) {
 		(entry) =>
 			entry.operation_type === "pane.close" && entry.phase === "observed",
 	);
+	const expectedArchivePrevious =
+		closeEntries.at(-1)?.entry_digest ?? standDownEntry.entry_digest;
+	if (
+		archiveEntry.previous_digest !== expectedArchivePrevious ||
+		archived.state.journal_head !== archiveEntry.entry_digest
+	)
+		fail("bookkeeping_unknown", "archived journal terminal binding is invalid");
 	const closed = [];
 	const seenOperations = new Set();
 	for (const expected of identity.close_set) {
@@ -1862,6 +1929,18 @@ function archivedStandDownReplay(archived, workspaceId, suppliedReason) {
 				"bookkeeping_unknown",
 				"archived close result is missing or duplicated",
 			);
+		const pane = panes.find(
+			(candidate) =>
+				candidate.subject.id === expected.role_name &&
+				candidate.subject.generation === expected.pane_generation,
+		);
+		if (
+			!pane ||
+			matching[0].request_digest !== sha256(pane.observedIdentity) ||
+			matching[0].result_digest !==
+				sha256({ pane_id: expected.pane_id, closed: true })
+		)
+			fail("bookkeeping_unknown", "archived close digests are inconsistent");
 		closed.push(expected.pane_id);
 	}
 	if (closeEntries.length !== closed.length)
@@ -1919,6 +1998,7 @@ export async function standDown({
 			workspaceId: context.workspaceId,
 		});
 		validateRunConfiguration(archived, config);
+		deriveRetainedReportAuthority(archived, stateRoot);
 		return archivedStandDownReplay(archived, context.workspaceId, reason);
 	}
 	refuseDeadRepositoryLock(store);
@@ -1933,40 +2013,8 @@ export async function standDown({
 	try {
 		let active = loadActiveRun(store, { workspaceId: context.workspaceId });
 		validateRunConfiguration(active, config);
-		const panes = exactObservedEntries(active, "pane.create")
-			.map((paneEntry) => {
-				const matchingAgents = active.journal.filter(
-					(entry) =>
-						entry.operation_type === "agent.start" &&
-						entry.phase === "observed" &&
-						entry.subject.id === paneEntry.subject.id &&
-						entry.observed_identity?.pane_id ===
-							paneEntry.observed_identity.pane_id,
-				);
-				if (matchingAgents.length > 1)
-					fail("bookkeeping_unknown", "pane has duplicate attached agents");
-				return {
-					subject: paneEntry.subject,
-					paneEntry,
-					agentEntry: matchingAgents[0] ?? null,
-					observedIdentity:
-						matchingAgents[0]?.observed_identity ?? paneEntry.observed_identity,
-				};
-			})
-			.sort((left, right) => {
-				const leftKey = `${left.subject.id}\0${left.subject.generation}\0${left.paneEntry.operation_id}\0${left.observedIdentity.pane_id}\0${left.observedIdentity.terminal_id}\0${left.observedIdentity.cwd}`;
-				const rightKey = `${right.subject.id}\0${right.subject.generation}\0${right.paneEntry.operation_id}\0${right.observedIdentity.pane_id}\0${right.observedIdentity.terminal_id}\0${right.observedIdentity.cwd}`;
-				return Buffer.compare(Buffer.from(leftKey), Buffer.from(rightKey));
-			});
-		const closeSet = panes.map((entry) => ({
-			role_name: entry.subject.id,
-			pane_generation: entry.subject.generation,
-			pane_entry_digest: entry.paneEntry.entry_digest,
-			pane_id: entry.observedIdentity.pane_id,
-			terminal_id: entry.observedIdentity.terminal_id,
-			cwd: entry.observedIdentity.cwd,
-			close_operation_id: `close-${entry.subject.id}-${entry.subject.generation}`,
-		}));
+		const panes = retainedPaneAuthority(active);
+		const closeSet = retainedCloseSet(panes);
 		const standDownOperationId = `stand-down-begin-${active.state.generation}`;
 		const priorStandDown = existingObserved(
 			active,
@@ -2175,6 +2223,7 @@ export function readStatus({
 			workspaceId: context.workspaceId,
 		});
 		validateRunConfiguration(archived, config);
+		deriveRetainedReportAuthority(archived, stateRoot);
 		return {
 			run: archived.state.run_id,
 			generation: archived.state.generation,

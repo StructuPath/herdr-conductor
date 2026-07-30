@@ -3,6 +3,7 @@ import {
 	assert,
 	spawnSync,
 	readFileSync,
+	rmSync,
 	writeFileSync,
 	dirname,
 	join,
@@ -26,6 +27,7 @@ import {
 	loadArchivedRun,
 	openRepositoryStore,
 } from "../scripts/state-kernel.mjs";
+import { STAGE2_CHECKPOINT_CATALOG } from "../scripts/stage2-checkpoint-catalog.mjs";
 
 test("crashes at intent/effect boundaries leave non-replayed truthful state", async () => {
 	for (const [boundary, expectedEffects] of [
@@ -245,48 +247,24 @@ test("true SIGKILL archive boundaries classify from durable authority without re
 		"fixtures",
 		"b3-crash-child.mjs",
 	);
-	for (const [boundary, expected] of [
-		[
-			"run.archive:archive.after_intent_durable",
-			{ phase: "intent", status: "active", pointer: true, guard: false },
-		],
-		[
-			"run.archive:archive_state.after_publish",
-			{ phase: "intent", status: "archived", pointer: true, guard: true },
-		],
-		[
-			"run.archive:archive.after_pointer_remove",
-			{ phase: "intent", status: "archived", pointer: false, guard: true },
-		],
-		[
-			"run.archive:archive_result.after_publish",
-			{ phase: "observed", status: "archived", pointer: false, guard: true },
-		],
-		[
-			"run.archive:archive_guard_remove.before_remove",
-			{ phase: "observed", status: "archived", pointer: false, guard: true },
-		],
-		[
-			"run.archive:archive_guard_remove.after_remove",
-			{
-				phase: "observed",
-				status: "archived",
-				pointer: false,
-				guard: false,
-				terminal: true,
-			},
-		],
-		[
-			"run.archive:archive_guard_remove.after_directory_fsync",
-			{
-				phase: "observed",
-				status: "archived",
-				pointer: false,
-				guard: false,
-				terminal: true,
-			},
-		],
-	]) {
+	const checkpoints = STAGE2_CHECKPOINT_CATALOG.archive;
+	const reaches = (checkpoint, threshold) =>
+		checkpoints.indexOf(checkpoint) >= checkpoints.indexOf(threshold);
+	for (const checkpoint of checkpoints) {
+		const boundary = `run.archive:${checkpoint}`;
+		const expected = {
+			phase: reaches(checkpoint, "archive_result.after_publish")
+				? "observed"
+				: "intent",
+			status: reaches(checkpoint, "archive_state.after_publish")
+				? "archived"
+				: "active",
+			pointer: !reaches(checkpoint, "archive.after_pointer_remove"),
+			guard:
+				reaches(checkpoint, "archive_guard_publish.after_publish") &&
+				!reaches(checkpoint, "archive_guard_remove.after_remove"),
+			terminal: reaches(checkpoint, "archive_guard_remove.after_remove"),
+		};
 		const fixture = await assembledFixture();
 		const livePath = join(temp("conductor-archive-live-"), "live.json");
 		const effectsPath = join(temp("conductor-archive-effects-"), "effects.log");
@@ -342,8 +320,15 @@ test("true SIGKILL archive boundaries classify from durable authority without re
 		assert.equal(runState.status, expected.status, boundary);
 		assert.equal(pointers.length > 0, expected.pointer, boundary);
 		assert.equal(archiveGuards.length > 0, expected.guard, boundary);
-		assert.equal(archiveResults.length, 1, boundary);
-		assert.equal(archiveResults[0].value.phase, expected.phase, boundary);
+		const expectedArchiveResults = reaches(
+			checkpoint,
+			"archive_intent.after_publish",
+		)
+			? 1
+			: 0;
+		assert.equal(archiveResults.length, expectedArchiveResults, boundary);
+		if (expectedArchiveResults)
+			assert.equal(archiveResults[0].value.phase, expected.phase, boundary);
 		const store = openRepositoryStore({
 			stateRoot: fixture.stateRoot,
 			repoPath: fixture.repository,
@@ -351,13 +336,20 @@ test("true SIGKILL archive boundaries classify from durable authority without re
 		const classification = inspectArchiveUncertainty(store, {
 			workspaceId: fixture.workspace,
 		});
-		if (expected.terminal) {
+		const retryablePreIntent = checkpoint === "archive_intent.before_temp_open";
+		const bookkeepingResidue = [
+			"archive_intent.after_temp_write",
+			"archive_intent.after_file_fsync",
+		].includes(checkpoint);
+		if (expected.terminal || retryablePreIntent || bookkeepingResidue) {
 			assert.equal(classification, null, boundary);
-			assert.equal(
-				loadArchivedRun(store, { workspaceId: fixture.workspace }).state.status,
-				"archived",
-				boundary,
-			);
+			if (expected.terminal)
+				assert.equal(
+					loadArchivedRun(store, { workspaceId: fixture.workspace }).state
+						.status,
+					"archived",
+					boundary,
+				);
 		} else
 			assert.deepEqual(
 				{
@@ -378,21 +370,34 @@ test("true SIGKILL archive boundaries classify from durable authority without re
 				},
 				boundary,
 			);
+		rmSync(store.lockDir, { recursive: true, force: true });
+		const authorityBeforeRetry = privateDocuments(fixture.stateRoot);
 		const retry = spawnSync(process.execPath, [...args.slice(0, -1), "never"], {
 			encoding: "utf8",
 		});
 		assert.equal(
 			retry.status,
-			expected.terminal ? 0 : 1,
-			`${boundary}: restart exit`,
+			expected.terminal || retryablePreIntent ? 0 : 1,
+			`${boundary}: restart exit: ${retry.stderr}`,
 		);
-		if (!expected.terminal)
-			assert.match(
-				retry.stderr,
-				/recovery_required:archive_uncertain/,
+		if (!expected.terminal && !retryablePreIntent)
+			assert.equal(
+				retry.stderr.split(":", 1)[0],
+				bookkeepingResidue ? "bookkeeping_unknown" : "recovery_required",
 				`${boundary}: restart classification`,
 			);
 		assert.equal(readFileSync(effectsPath, "utf8"), afterCrash, boundary);
-		assert.deepEqual(privateDocuments(fixture.stateRoot), documents, boundary);
+		if (retryablePreIntent)
+			assert.equal(
+				loadArchivedRun(store, { workspaceId: fixture.workspace }).state.status,
+				"archived",
+				boundary,
+			);
+		else
+			assert.deepEqual(
+				privateDocuments(fixture.stateRoot),
+				authorityBeforeRetry,
+				boundary,
+			);
 	}
 });

@@ -1,8 +1,17 @@
 import { test } from "node:test";
+import { createHash } from "node:crypto";
 import { canonicalJson } from "../scripts/private-state-schema.mjs";
+import {
+	archivedStandDownReplay,
+	deriveRetainedReportAuthority,
+} from "../scripts/stage1-runtime.mjs";
+import { loadArchivedRun } from "../scripts/state-kernel.mjs";
+import { reportDigest, taskDigest } from "../scripts/task-report-schema.mjs";
 import {
 	assert,
 	existsSync,
+	mkdirSync,
+	rmSync,
 	writeFileSync,
 	dirname,
 	join,
@@ -13,12 +22,16 @@ import {
 	temp,
 	repo,
 	privateStateRoot,
+	openRepositoryStore,
 	context,
 	config,
 	deterministicRandom,
 	FakeHerdr,
 	readJournals,
 	privateDocuments,
+	snapshotTree,
+	gitInventory,
+	git,
 	publishWorkerReport,
 	assembledFixture,
 } from "./stage1-runtime-helpers.mjs";
@@ -217,6 +230,353 @@ test("successful stand-down exposes the verified archived terminal through statu
 	assert.equal(status.archived, true);
 	assert.deepEqual(status.legal_next_operations, ["status"]);
 	assert.deepEqual(status.workers, []);
+});
+
+test("archived replay rejects every terminal authority mutation without effects", async () => {
+	const fixture = await assembledFixture({
+		roles: [
+			{ name: "builder-a", kind: "codex", mode: "write" },
+			{ name: "builder-b", kind: "codex", mode: "write" },
+		],
+	});
+	await standDown({
+		contextJson: context(fixture.repository, fixture.workspace),
+		herdrBin: "fake",
+		exec: fixture.fake.exec,
+	});
+	const archived = loadArchivedRun(
+		openRepositoryStore({
+			stateRoot: fixture.stateRoot,
+			repoPath: fixture.repository,
+		}),
+		{ workspaceId: fixture.workspace },
+	);
+	const digest = (value) =>
+		createHash("sha256").update(canonicalJson(value)).digest("hex");
+	const standDownEntry = (value) =>
+		value.journal.find(
+			(entry) => entry.operation_type === "run.stand-down.begin",
+		);
+	const archiveEntry = (value) =>
+		value.journal.find((entry) => entry.operation_type === "run.archive");
+	const redigestIdentity = (value) => {
+		const entry = standDownEntry(value);
+		entry.request_digest = digest(entry.observed_identity);
+		entry.result_digest = digest(entry.observed_identity);
+	};
+	const mutations = [
+		[
+			"archive operation id",
+			(value) => {
+				standDownEntry(value).observed_identity.archive_operation_id =
+					"archive-foreign";
+				redigestIdentity(value);
+			},
+		],
+		[
+			"source journal head",
+			(value) => {
+				standDownEntry(value).observed_identity.source_journal_head =
+					"f".repeat(64);
+				redigestIdentity(value);
+			},
+		],
+		[
+			"close operation id",
+			(value) => {
+				standDownEntry(
+					value,
+				).observed_identity.close_set[0].close_operation_id = "close-foreign";
+				redigestIdentity(value);
+			},
+		],
+		...[
+			"role_name",
+			"pane_generation",
+			"pane_entry_digest",
+			"pane_id",
+			"terminal_id",
+			"cwd",
+		].map((field) => [
+			`close set ${field}`,
+			(value) => {
+				standDownEntry(value).observed_identity.close_set[0][field] =
+					field === "cwd" ? temp("foreign-close-cwd-") : "f".repeat(32);
+				redigestIdentity(value);
+			},
+		]),
+		[
+			"close set order",
+			(value) => {
+				standDownEntry(value).observed_identity.close_set.reverse();
+				redigestIdentity(value);
+			},
+		],
+		[
+			"duplicate close set",
+			(value) => {
+				const identity = standDownEntry(value).observed_identity;
+				identity.close_set.push(structuredClone(identity.close_set[0]));
+				redigestIdentity(value);
+			},
+		],
+		[
+			"stand-down request digest",
+			(value) => {
+				standDownEntry(value).request_digest = "f".repeat(64);
+			},
+		],
+		[
+			"stand-down result digest",
+			(value) => {
+				standDownEntry(value).result_digest = "f".repeat(64);
+			},
+		],
+		[
+			"archive operation identity",
+			(value) => {
+				archiveEntry(value).operation_id = "archive-foreign";
+			},
+		],
+		[
+			"archive request binding",
+			(value) => {
+				archiveEntry(value).request_digest = "f".repeat(64);
+			},
+		],
+		[
+			"archive result binding",
+			(value) => {
+				archiveEntry(value).result_digest = "f".repeat(64);
+			},
+		],
+		[
+			"archive previous binding",
+			(value) => {
+				archiveEntry(value).previous_digest = "f".repeat(64);
+			},
+		],
+		[
+			"archive journal head binding",
+			(value) => {
+				value.state.journal_head = "f".repeat(64);
+			},
+		],
+		[
+			"close request digest",
+			(value) => {
+				value.journal.find(
+					(entry) => entry.operation_type === "pane.close",
+				).request_digest = "f".repeat(64);
+			},
+		],
+		[
+			"close result digest",
+			(value) => {
+				value.journal.find(
+					(entry) => entry.operation_type === "pane.close",
+				).result_digest = "f".repeat(64);
+			},
+		],
+		[
+			"missing close result",
+			(value) => {
+				const index = value.journal.findIndex(
+					(entry) => entry.operation_type === "pane.close",
+				);
+				value.journal.splice(index, 1);
+			},
+		],
+		[
+			"duplicate close result",
+			(value) => {
+				const close = value.journal.find(
+					(entry) => entry.operation_type === "pane.close",
+				);
+				const archiveIndex = value.journal.findIndex(
+					(entry) => entry.operation_type === "run.archive",
+				);
+				value.journal.splice(archiveIndex - 1, 0, structuredClone(close));
+			},
+		],
+		[
+			"extra close result",
+			(value) => {
+				const close = structuredClone(
+					value.journal.find((entry) => entry.operation_type === "pane.close"),
+				);
+				close.operation_id = "close-extra";
+				const archiveIndex = value.journal.findIndex(
+					(entry) => entry.operation_type === "run.archive",
+				);
+				value.journal.splice(archiveIndex, 0, close);
+			},
+		],
+		[
+			"retained pane identity",
+			(value) => {
+				value.journal.find(
+					(entry) => entry.operation_type === "pane.create",
+				).observed_identity.pane_id = `${fixture.workspace}:foreign`;
+			},
+		],
+	];
+	const authority = snapshotTree(fixture.stateRoot);
+	const gitBefore = gitInventory(fixture.repository);
+	const effects = fixture.fake.effects;
+	for (const [name, mutate] of mutations) {
+		const changed = structuredClone(archived);
+		mutate(changed);
+		assert.throws(
+			() => archivedStandDownReplay(changed, fixture.workspace),
+			(error) => error.code === "bookkeeping_unknown",
+			name,
+		);
+		assert.deepEqual(snapshotTree(fixture.stateRoot), authority, name);
+		assert.deepEqual(gitInventory(fixture.repository), gitBefore, name);
+		assert.equal(fixture.fake.effects, effects, name);
+	}
+	for (const reason of ["normal_completion", "not-a-reason"])
+		assert.throws(
+			() => archivedStandDownReplay(archived, fixture.workspace, reason),
+			(error) => error.code === "operation_conflict",
+			reason,
+		);
+});
+
+test("archived status and stand-down replay require canonical retained task and report authority", async () => {
+	for (const variant of [
+		"missing task",
+		"malformed task",
+		"noncanonical task",
+		"cross-role task",
+		"missing report",
+		"malformed report",
+		"noncanonical report",
+		"cross-role report",
+	]) {
+		const fixture = await assembledFixture();
+		const worker = fixture.result.workers[0];
+		mkdirSync(join(worker.cwd, "src"));
+		writeFileSync(join(worker.cwd, "src", "archive-authority.txt"), "done\n");
+		git(worker.cwd, "add", "src/archive-authority.txt");
+		git(worker.cwd, "commit", "-qm", "complete archived authority fixture");
+		await publishWorkerReport(fixture, worker);
+		await reconcile({
+			contextJson: context(fixture.repository, fixture.workspace),
+			herdrBin: "fake",
+			exec: fixture.fake.exec,
+		});
+		await standDown({
+			contextJson: context(fixture.repository, fixture.workspace),
+			herdrBin: "fake",
+			exec: fixture.fake.exec,
+			reason: "normal_completion",
+		});
+		const documents = privateDocuments(fixture.stateRoot);
+		const target = documents.find(({ path }) =>
+			variant.includes("task")
+				? path.includes("/contracts/tasks/")
+				: path.includes("/contracts/reports/"),
+		);
+		assert.ok(target, variant);
+		if (variant.startsWith("missing")) rmSync(target.path);
+		else if (variant.startsWith("malformed"))
+			writeFileSync(target.path, '{"broken":');
+		else if (variant.startsWith("noncanonical"))
+			writeFileSync(target.path, JSON.stringify(target.value, null, 2));
+		else {
+			const changed = structuredClone(target.value);
+			changed.role.name = "cross-role";
+			if (variant.includes("task")) {
+				delete changed.task_digest;
+				changed.task_digest = taskDigest(changed);
+			} else {
+				delete changed.report_digest;
+				changed.report_digest = reportDigest(changed);
+			}
+			writeFileSync(target.path, canonicalJson(changed));
+		}
+		const authority = snapshotTree(fixture.stateRoot);
+		const gitBefore = gitInventory(fixture.repository);
+		const effects = fixture.fake.effects;
+		assert.throws(
+			() =>
+				readStatus({
+					contextJson: context(fixture.repository, fixture.workspace),
+					herdrBin: "fake",
+					exec: fixture.fake.exec,
+				}),
+			(error) => error.code === "bookkeeping_unknown",
+			variant,
+		);
+		await assert.rejects(
+			() =>
+				standDown({
+					contextJson: context(fixture.repository, fixture.workspace),
+					herdrBin: "fake",
+					exec: fixture.fake.exec,
+				}),
+			(error) => error.code === "bookkeeping_unknown",
+			variant,
+		);
+		assert.deepEqual(snapshotTree(fixture.stateRoot), authority, variant);
+		assert.deepEqual(gitInventory(fixture.repository), gitBefore, variant);
+		assert.equal(fixture.fake.effects, effects, variant);
+	}
+});
+
+test("archived retained authority rejects duplicate task and report journal owners without effects", async () => {
+	const fixture = await assembledFixture();
+	const worker = fixture.result.workers[0];
+	mkdirSync(join(worker.cwd, "src"));
+	writeFileSync(join(worker.cwd, "src", "duplicate-authority.txt"), "done\n");
+	git(worker.cwd, "add", "src/duplicate-authority.txt");
+	git(worker.cwd, "commit", "-qm", "duplicate authority fixture");
+	await publishWorkerReport(fixture, worker);
+	await reconcile({
+		contextJson: context(fixture.repository, fixture.workspace),
+		herdrBin: "fake",
+		exec: fixture.fake.exec,
+	});
+	await standDown({
+		contextJson: context(fixture.repository, fixture.workspace),
+		herdrBin: "fake",
+		exec: fixture.fake.exec,
+		reason: "normal_completion",
+	});
+	const archived = loadArchivedRun(
+		openRepositoryStore({
+			stateRoot: fixture.stateRoot,
+			repoPath: fixture.repository,
+		}),
+		{ workspaceId: fixture.workspace },
+	);
+	const authority = snapshotTree(fixture.stateRoot);
+	const gitBefore = gitInventory(fixture.repository);
+	const effects = fixture.fake.effects;
+	for (const operationType of ["task.publish", "report.harvest"]) {
+		const changed = structuredClone(archived);
+		const duplicate = structuredClone(
+			changed.journal.find((entry) => entry.operation_type === operationType),
+		);
+		const index = changed.journal.findIndex(
+			(entry) => entry.operation_type === operationType,
+		);
+		changed.journal.splice(index + 1, 0, duplicate);
+		assert.throws(
+			() => deriveRetainedReportAuthority(changed, fixture.stateRoot),
+			(error) => error.code === "bookkeeping_unknown",
+			operationType,
+		);
+		assert.deepEqual(snapshotTree(fixture.stateRoot), authority, operationType);
+		assert.deepEqual(
+			gitInventory(fixture.repository),
+			gitBefore,
+			operationType,
+		);
+		assert.equal(fixture.fake.effects, effects, operationType);
+	}
 });
 
 test("pre-intent integration failure is retryable while failed pane close is never replayed", async () => {

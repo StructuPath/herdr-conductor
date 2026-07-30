@@ -192,12 +192,13 @@ export function inspectProducerSource(
 		fullRef !== taskSource.branch_ref ||
 		headSha !== refSha ||
 		headSha !== reportSource.expected_sha ||
-		headTreeSha !== reportSource.tree_sha ||
-		indexTreeSha !== headTreeSha
+		headTreeSha !== reportSource.tree_sha
 	)
+		reject("stale_source", "producer ref, head, or tree differs from the report");
+	if (indexTreeSha !== headTreeSha)
 		reject(
-			"stale_source",
-			"producer ref, head, tree, or index differs from the report",
+			"source_policy_violation",
+			"producer index differs from the reported head tree",
 		);
 	try {
 		run(

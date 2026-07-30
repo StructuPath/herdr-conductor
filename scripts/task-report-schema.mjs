@@ -531,11 +531,9 @@ function validateTaskCore(value) {
 		],
 		"task",
 	);
-	if (
-		value.document_type !== "herdr-conductor-task" ||
-		value.schema_version !== 1
-	)
-		invalid("task document");
+	if (value.document_type !== "herdr-conductor-task") invalid("task document");
+	if (value.schema_version !== 1)
+		fail("wrong_version", "task schema version is unsupported");
 	matching(value.task_id, ID, "task.task_id");
 	matching(value.task_generation, GENERATION, "task.task_generation");
 	matching(value.task_digest, DIGEST, "task.task_digest");
@@ -733,11 +731,10 @@ function reportCore(value, { task, draft = false, workerInput = true } = {}) {
 	];
 	if (!draft) fields.splice(4, 0, "report_digest");
 	exact(value, fields, draft ? "report draft" : "report");
-	if (
-		value.document_type !== "herdr-conductor-report" ||
-		value.schema_version !== 1
-	)
+	if (value.document_type !== "herdr-conductor-report")
 		invalid("report document");
+	if (value.schema_version !== 1)
+		fail("wrong_version", "report schema version is unsupported");
 	matching(value.report_id, ID, "report.report_id");
 	matching(value.report_generation, GENERATION, "report.report_generation");
 	if (!draft) matching(value.report_digest, DIGEST, "report.report_digest");

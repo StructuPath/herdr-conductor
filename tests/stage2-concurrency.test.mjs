@@ -20,6 +20,8 @@ import {
 	deterministicRandom,
 	git,
 	privateDocuments,
+	repo,
+	snapshotTree,
 } from "./stage1-runtime-helpers.mjs";
 
 const publisherChild = fileURLToPath(
@@ -37,15 +39,49 @@ const roles = [
 	},
 ];
 function runChild(childPath, args) {
-	return new Promise((resolvePromise) => {
+	return new Promise((resolvePromise, rejectPromise) => {
 		const child = spawn(process.execPath, [childPath, ...args], {
 			stdio: ["ignore", "ignore", "pipe"],
 		});
 		let stderr = "";
-		child.stderr.on("data", (bytes) => (stderr += bytes));
-		child.on("exit", (code, signal) =>
-			resolvePromise({ code, signal, stderr }),
-		);
+		let settled = false;
+		let timeoutError = null;
+		let killGraceTimer = null;
+		const onData = (bytes) => (stderr += bytes);
+		const cleanup = () => {
+			clearTimeout(timeout);
+			if (killGraceTimer) clearTimeout(killGraceTimer);
+			child.stderr?.off("data", onData);
+			child.off("close", onClose);
+			child.off("error", onError);
+		};
+		const finish = (callback, value) => {
+			if (settled) return;
+			settled = true;
+			cleanup();
+			callback(value);
+		};
+		const onClose = (code, signal) => {
+			if (timeoutError) finish(rejectPromise, timeoutError);
+			else finish(resolvePromise, { code, signal, stderr });
+		};
+		const onError = (error) => finish(rejectPromise, error);
+		const timeout = setTimeout(() => {
+			timeoutError = new Error(
+				`child timed out: ${childPath} ${args.join(" ")}`,
+			);
+			if (!child.kill("SIGKILL")) {
+				finish(rejectPromise, timeoutError);
+				return;
+			}
+			killGraceTimer = setTimeout(
+				() => finish(rejectPromise, timeoutError),
+				1_000,
+			);
+		}, 30_000);
+		child.stderr?.on("data", onData);
+		child.once("close", onClose);
+		child.once("error", onError);
 	});
 }
 function runPublisher(args) {
@@ -249,6 +285,119 @@ function reconciliationEntries(fixture) {
 		({ value }) => value.operation_type === "integration.reconcile",
 	);
 }
+
+test("accepted producer drift while a child publisher is blocked refuses every complete-source surface", async () => {
+	for (const surface of ["tracked", "index", "untracked", "ignored"]) {
+		const repository = repo();
+		writeFileSync(join(repository, ".gitignore"), ".ignored/\n");
+		git(repository, "add", ".gitignore");
+		git(repository, "commit", "-qm", "ignore late fixture inventory");
+		const fixture = await assembledFixture({
+			repository,
+			roles: [
+				{ ...roles[0], name: "builder-a" },
+				{ ...roles[0], name: "builder-b" },
+			],
+		});
+		const reportPaths = [];
+		for (const [index, worker] of fixture.result.workers.entries()) {
+			mkdirSync(join(worker.cwd, "src"));
+			writeFileSync(
+				join(worker.cwd, "src", `${worker.role}.mjs`),
+				`export default ${index};\n`,
+			);
+			git(worker.cwd, "add", `src/${worker.role}.mjs`);
+			git(worker.cwd, "commit", "-qm", `complete ${worker.role}`);
+			const { report } = await buildWorkerReport(fixture, worker);
+			const directory = mkdtempSync(
+				join(tmpdir(), "conductor-complete-source-"),
+			);
+			const reportPath = join(directory, "report.json");
+			writeFileSync(reportPath, canonicalJson(report));
+			reportPaths.push(reportPath);
+		}
+		const [first, second] = fixture.result.workers;
+		assert.deepEqual(
+			await runPublisher([
+				first.task_path,
+				join(repository, ".herdr-conductor.json"),
+				reportPaths[0],
+				"never",
+			]),
+			{ code: 0, signal: null, stderr: "" },
+		);
+		const waiting = await reconcile({
+			contextJson: context(repository, fixture.workspace),
+			herdrBin: "fake",
+			exec: fixture.fake.exec,
+		});
+		assert.equal(waiting.lifecycle, "delivery_waiting_reports", surface);
+		assert.equal(waiting.accepted_reports, 1, surface);
+		const barrier = mkdtempSync(
+			join(tmpdir(), "conductor-second-report-barrier-"),
+		);
+		const ready = join(barrier, "ready");
+		const release = join(barrier, "release");
+		const publishing = runPublisher([
+			second.task_path,
+			join(repository, ".herdr-conductor.json"),
+			reportPaths[1],
+			"publisher_guard.before_open",
+			ready,
+			release,
+		]);
+		for (let attempt = 0; attempt < 1_000 && !existsSync(ready); attempt++)
+			await new Promise((resolvePromise) => setTimeout(resolvePromise, 10));
+		assert.equal(existsSync(ready), true, `${surface}: publisher barrier`);
+		const trackedPath = join(first.cwd, "src", `${first.role}.mjs`);
+		if (surface === "tracked")
+			writeFileSync(trackedPath, "export default 41;\n");
+		else if (surface === "index") {
+			writeFileSync(trackedPath, "export default 42;\n");
+			git(first.cwd, "add", `src/${first.role}.mjs`);
+		} else if (surface === "untracked")
+			writeFileSync(join(first.cwd, "late-untracked.txt"), "late\n");
+		else {
+			mkdirSync(join(first.cwd, ".ignored"));
+			writeFileSync(join(first.cwd, ".ignored", "late.log"), "late\n");
+		}
+		writeFileSync(release, "release\n");
+		assert.deepEqual(await publishing, { code: 0, signal: null, stderr: "" });
+		const targetBefore = git(repository, "rev-parse", "HEAD");
+		const effectsBefore = fixture.fake.effects;
+		await assert.rejects(
+			() =>
+				reconcile({
+					contextJson: context(repository, fixture.workspace),
+					herdrBin: "fake",
+					exec: fixture.fake.exec,
+				}),
+			(error) => error.code === "source_policy_violation",
+			surface,
+		);
+		const authority = snapshotTree(fixture.stateRoot);
+		await assert.rejects(
+			() =>
+				reconcile({
+					contextJson: context(repository, fixture.workspace),
+					herdrBin: "fake",
+					exec: fixture.fake.exec,
+				}),
+			(error) => error.code === "source_policy_violation",
+			surface,
+		);
+		assert.deepEqual(snapshotTree(fixture.stateRoot), authority, surface);
+		assert.equal(git(repository, "rev-parse", "HEAD"), targetBefore, surface);
+		assert.equal(fixture.fake.effects, effectsBefore, surface);
+		assert.equal(
+			privateDocuments(fixture.stateRoot).filter(
+				({ value }) => value.operation_type === "integration.reconcile",
+			).length,
+			0,
+			surface,
+		);
+	}
+});
 
 test("child barrier source replacement loses before CAS with exact retained journal", async () => {
 	const { fixture, worker } = await publishedRaceFixture();
