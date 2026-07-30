@@ -9,10 +9,10 @@ permissions:
   contents: read
 
 jobs:
-  test:
-    name: Node ${{ matrix.node-version }}
+  node-linux:
+    name: Linux / Node ${{ matrix.node-version }} / full history
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -20,35 +20,47 @@ jobs:
           - 20
           - lts/*
     steps:
-      - name: Check out repository
+      - name: Check out complete candidate history
         # v4.2.2
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           fetch-depth: 0
+      - name: Prove checkout is not shallow
+        run: test "$(git rev-parse --is-shallow-repository)" = false
       - name: Set up Node.js
         # v4.0.3
         uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b
         with:
           node-version: ${{ matrix.node-version }}
-      - name: Run tests
-        run: npm test
+      - name: Compile descriptor-held Python helper
+        run: npm run check:python
+      - name: Run complete candidate checks
+        env:
+          CONDUCTOR_TEST_BASH: /bin/bash
+        run: npm run check
+      - name: Run explicit Stage 2 matrix
+        env:
+          CONDUCTOR_TEST_BASH: /bin/bash
+        run: npm run test:stage2
 
   macos-bash:
-    name: macOS system Bash 3.2
+    name: macOS / Node 20 / system Bash 3.2 / real worktrees
     runs-on: macos-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
-      - name: Check out repository
+      - name: Check out complete candidate history
         # v4.2.2
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           fetch-depth: 0
+      - name: Prove checkout is not shallow
+        run: test "$(git rev-parse --is-shallow-repository)" = false
       - name: Set up Node.js 20
         # v4.0.3
         uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b
         with:
           node-version: 20
-      - name: Require and parse with the macOS system Bash
+      - name: Require macOS system Bash 3.2
         run: |
           version="$(
             /bin/bash -c \
@@ -56,39 +68,46 @@ jobs:
           )"
           test "$version" = "3.2"
           /bin/bash -n scripts/*.sh
-      - name: Run tests through the macOS system Bash
+      - name: Compile descriptor-held Python helper
+        run: npm run check:python
+      - name: Run complete checks through system Bash
         env:
           CONDUCTOR_TEST_BASH: /bin/bash
-        run: npm test
+        run: npm run check
+      - name: Run explicit Stage 2 concurrency and SIGKILL matrix
+        env:
+          CONDUCTOR_TEST_BASH: /bin/bash
+        run: npm run test:stage2
 
   static:
-    name: Static and documentation gates
+    name: ShellCheck / docs / manifest / evidence / Actionlint
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
-      - name: Check out repository
+      - name: Check out complete candidate history
         # v4.2.2
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           fetch-depth: 0
+      - name: Prove checkout is not shallow
+        run: test "$(git rev-parse --is-shallow-repository)" = false
       - name: Set up Node.js 20
         # v4.0.3
         uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b
         with:
           node-version: 20
-      - name: Validate shell syntax
+      - name: Validate Bash syntax
         run: npm run check:shell
       - name: Run hosted ShellCheck
         run: |
-          # ubuntu-latest may update its preinstalled ShellCheck independently.
-          # Print the exact version so hosted/local differences are observable.
           shellcheck --version
-          shellcheck --shell=bash scripts/*.sh
-      - name: Validate plugin manifest
-        run: npm run check:manifest
-      - name: Validate documentation contracts
-        run: npm run check:docs
-      - name: Validate retained evidence contracts
-        run: npm run check:evidence
-      - name: Validate workflow syntax
-        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+          npm run check:shellcheck
+      - name: Validate Python helper
+        run: npm run check:python
+      - name: Validate manifest, documentation, and retained evidence
+        run: |
+          npm run check:manifest
+          npm run check:docs
+          npm run check:evidence
+      - name: Validate workflow syntax with pinned Actionlint
+        run: npm run check:workflow

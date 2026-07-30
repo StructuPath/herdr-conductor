@@ -324,9 +324,10 @@ test("candidate provenance uses real Git commits and rejects invalid ancestry or
 		/does not exist/,
 	);
 	writeFileSync(join(repository, "package.json"), "diverged\n");
-	assert.throws(
-		() => checkCandidateProvenance(repository, candidate, manifest),
-		/current checkout runtime source/,
+	assert.deepEqual(
+		checkCandidateProvenance(repository, candidate, manifest),
+		manifest,
+		"historical evidence remains bound to candidate-tree bytes, not the checkout",
 	);
 	execFileSync("git", ["-C", repository, "add", "package.json"]);
 	execFileSync("git", ["-C", repository, "commit", "-qm", "divergent source"]);

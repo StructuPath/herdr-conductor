@@ -549,9 +549,13 @@ test("every intent publication fault performs zero external effects and leaves f
 		["journal_head.after_temp_write", "bookkeeping_unknown"],
 		["journal_head.after_publish", "recovery_required"],
 		["journal_head.after_directory_fsync", "recovery_required"],
-		["journal_guard.after_publish", "bookkeeping_unknown", "recovery_required"],
 		[
-			"journal_guard.after_directory_fsync",
+			"journal_guard_publish.after_publish",
+			"bookkeeping_unknown",
+			"recovery_required",
+		],
+		[
+			"journal_guard_publish.after_directory_fsync",
 			"recovery_required",
 			"recovery_required",
 		],

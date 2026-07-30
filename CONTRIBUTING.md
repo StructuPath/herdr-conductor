@@ -1,75 +1,98 @@
 # Contributing
 
-Conductor is currently an attended prototype. Keep changes small, fail closed on
-ambiguous state, and do not turn documentation or tests into claims that exceed
-observed behavior.
+Conductor `0.3.0` is attended Stage 2 software for exactly Herdr `0.7.5`.
+Changes must stay fail-closed, preserve one runtime authority, and avoid claims
+beyond implemented and independently checked behavior.
 
 ## Development requirements
 
-- Node.js 20 or the current LTS release
-- Python 3.11 or newer for `tomllib` manifest checks
-- Bash 3.2 compatibility on macOS
+- Node.js 20 and the current LTS release
+- Python 3.11 or newer
+- Git with SHA-1-width object IDs
+- macOS system Bash 3.2 compatibility and Linux Bash
 - ShellCheck
-- Go only when running the pinned Actionlint command locally
+- Go for the pinned Actionlint command
 
 Run before requesting review:
 
 ```bash
 npm run check
+npm run test:stage2
 shellcheck --shell=bash scripts/*.sh
 go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
 ```
 
-`npm run check:evidence` validates retained B0 and B4 evidence without touching
-Herdr. The live B4 harness is not a routine test: it creates real disposable
-workspaces, repositories, a worktree, and a supported agent pane, and refuses
-unless invoked with the exact explicit opt-in:
-
-```bash
-CONDUCTOR_STAGE1_LIVE_SMOKE=I_UNDERSTAND_THIS_USES_LOCAL_HERDR npm run smoke:stage1:live
-```
-
-Run it only against the exact supported local Herdr runtime. Commit sanitized
-evidence and capture retention facts before deleting its temporary repositories.
-Never substitute direct module imports, fake entrypoints, or an existing user
-workspace for the live gate.
-
-CI repeats tests on Node 20 and current LTS, exercises the suite on macOS with the
-system `/bin/bash`, and runs manifest, documentation, shell, and workflow checks.
+CI checks full Git history on Node 20/current LTS Linux and Node 20 macOS,
+including real worktrees, concurrency, true `SIGKILL`, descriptor-held teardown,
+Python compilation, Bash 3.2 syntax/execution, ShellCheck, documentation,
+manifest, historical evidence, and pinned Actionlint.
 
 ## Change boundaries
 
-- Do not source new state formats as shell. New state must be parsed as strict,
-  non-executable data and reject corrupt, symlinked, duplicate, or mismatched
-  identity before mutation.
-- Changes to run selection, pane close, worktree lifecycle, branch merge, or
-  cleanup require negative tests proving zero mutation for foreign or ambiguous
-  resources.
-- Guard and prompts are advisory. Describe filesystem or process enforcement only
-  when a native harness/OS control and post-condition test prove it.
-- Do not claim durable recovery, verified ownership, read-only enforcement, or
-  live compatibility without retained evidence for the exact runtime and
-  Conductor base. B4 evidence does not by itself authorize a release.
-- Keep Swarm and Conductor separate. Supported composition is a sequential,
-  human-selected commit handoff, not shared private state or lifecycle.
-- Stand-down may archive strict state and close only a full live tuple match. It
-  must never remove worktrees, branches, artifacts, reports, recordings, logs,
-  Guard files, or legacy inventory.
+- `scripts/stage1-runtime.mjs` remains the one implementation behind assemble,
+  board, status, harvest, and stand-down. Do not add a competing runtime.
+- Task/outbox authority must be durable before pane/agent creation. Reports use
+  only bounded stdin and one exact task-bound destination.
+- Preserve complete producer selection, collector-computed paths, deterministic
+  integration, zero-or-one target CAS, exact-SHA detached gate sources, and
+  deterministic stand-down close prefixes.
+- Keep validator source outputs and all report artifacts empty in schema v1.
+- Treat worker and reviewer fields as unauthenticated assertions, never proof,
+  approval, authorization, signature, or attestation.
+- Missing, malformed, foreign, stale, duplicate, replayed, raced, or ambiguous
+  authority must have negative tests proving zero forbidden effects.
+- Product runtime never removes worktrees, branches, tasks, outboxes, reports,
+  gate sources, artifacts, recordings, logs, or state. Only the explicit live
+  harness may delete its exact identity-bound disposable inventory.
+- Do not add Stage 3 preview/approval/apply/recovery, suite adapters, unattended
+  launch, Browser/Guard/Swarm promotion, site changes, push/release automation,
+  cleanup/prune/migration/expiry, or newer-Herdr claims.
 
-Runtime contract changes must update the manifest, README, role guidance, tests,
-and canonical suite documentation together. The strict runtime and its journal
-are the sole current lifecycle and observed-resource authority.
+## Candidate and evidence sequence
+
+Commit A contains implementation, tests, docs, roles, package/manifest, CI,
+fixed source definition, harness, trio contract, and checker—but none of the
+three Stage 2 live result files or a live-success claim.
+
+1. Run every candidate/static/platform check available locally.
+2. Commit and re-run checks at an immutable clean Commit A.
+3. Generate the exact source manifest externally and obtain an independent
+   canonical review over every listed path. The retained review uses only the
+   fixed independent-human, independence, and GO tokens and requires an empty
+   findings list; those assertions remain unauthenticated. Any finding or source
+   change invalidates A.
+4. Only then, with explicit opt-in, run the installed-plugin harness against
+   exact A and an empty external `0700` output parent.
+5. Validate the complete post-teardown trio, remove external staging inputs, and
+   create Commit B by adding exactly:
+   - `docs/evidence/stage2-runtime-source-manifest.json`
+   - `docs/evidence/2026-07-28-stage2-live-contracts.json`
+   - `docs/evidence/2026-07-28-stage2-live-contracts.md`
+6. Run `npm run check`, `npm run check:release`, full CI, and independent final
+   provenance review. Maintainers alone decide whether to tag/release.
+
+The live run is not a routine development command and must not be run for Commit
+A preparation. Never fabricate, hand-edit, reinterpret, or partially commit a
+result trio. A complete trio after a post-proof crash may only be revalidated and
+fsynced by the attended finalizer; it is never rewritten or automatically
+completed.
+
+Historical Stage 1 B0/B4 artifacts remain byte-for-byte retained and are checked
+against their recorded candidate trees. Do not regenerate them for Stage 2.
 
 ## Review checklist
 
-A pull request should state:
+A pull request must state:
 
-1. whether runtime behavior or only documentation/quality gates changed;
-2. the failure boundary and any destructive surfaces touched;
-3. exact tests/static checks run and their output;
-4. current limitations and residual risks;
-5. whether manifest, package, README, suite docs, and vendored transport remain
-   in agreement.
+1. exact base/head and whether runtime authority changed;
+2. touched effect/crash boundaries and zero-effect negatives;
+3. exact tests/static/platform checks and output counts;
+4. current same-UID, TOCTOU, assertion-only, retention, SHA-width, and
+   no-recovery limitations;
+5. whether package, manifest, README, SECURITY, private-state docs, roles,
+   source definition, evidence inventory, and CI agree; and
+6. explicit confirmation that no Stage 3, adapter, unattended, product cleanup,
+   Browser, site, push, tag, or release change entered scope.
 
-Never include credentials, full agent transcripts, recordings, or unsanitized
-state files in an issue, pull request, or test fixture.
+Never include credentials, tokens, private paths/state, raw action output,
+prompts, transcripts, recordings, customer data, or unsanitized evidence.

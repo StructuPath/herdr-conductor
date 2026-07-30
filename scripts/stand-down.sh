@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stage 1 B3 identity-checked pane close and strict-state archive only.
+# Stage 2 deterministic exact-identity pane close prefix and archive only.
 set -uo pipefail
 cd "${HERDR_PLUGIN_ROOT:-$(dirname "$0")/..}" || {
 	echo "herdr-conductor: cannot resolve plugin root"

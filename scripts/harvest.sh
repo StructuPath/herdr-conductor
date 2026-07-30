@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stage 1 B3 attended reconcile through the strict Node authority.
+# Stage 2 attended report collection, one-CAS integration, and gate progression.
 set -uo pipefail
 cd "${HERDR_PLUGIN_ROOT:-$(dirname "$0")/..}" || {
 	echo "herdr-conductor: cannot resolve plugin root"

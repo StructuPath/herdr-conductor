@@ -14,7 +14,7 @@ const token = (offset, bytes) =>
 	(startSeed + offset).toString(16).padStart(2, "0").repeat(bytes);
 const runId = `r-${token(0, 12)}`;
 const paneGeneration = token(role.mode === "write" ? 3 : 2, 16);
-const agentSuffix = token(role.mode === "write" ? 4 : 3, 6);
+const agentSuffix = token(role.mode === "write" ? 7 : 6, 6);
 const branch = `conductor/${runId}/${role.name}`;
 const worktree = join(repository, ".conductor-worktrees", runId, role.name);
 const forkSha = execFileSync("git", ["-C", repository, "rev-parse", "HEAD"], {
@@ -54,6 +54,7 @@ function fakeExec(command, args) {
 			assert.ok(
 				[
 					JSON.stringify(["-C", args[1], "rev-parse", "HEAD"]),
+					JSON.stringify(["-C", args[1], "rev-parse", "HEAD^{tree}"]),
 					JSON.stringify(["-C", args[1], "rev-parse", "--show-toplevel"]),
 					JSON.stringify([
 						"-C",

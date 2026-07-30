@@ -196,6 +196,25 @@ function ensurePrivatePath(root, parts, fault) {
 	return cursor;
 }
 
+export function ensurePrivateSubdirectory(path, { root, fault } = {}) {
+	if (!root)
+		throw kernelError("invalid_state", "private directory root is required");
+	const resolvedRoot = resolve(root);
+	const resolvedPath = resolve(path);
+	const suffix = relative(resolvedRoot, resolvedPath);
+	if (
+		!suffix ||
+		suffix === ".." ||
+		suffix.startsWith(`..${sep}`) ||
+		isAbsolute(suffix)
+	)
+		throw kernelError(
+			"path_mismatch",
+			"private directory is outside its authority root",
+		);
+	return ensurePrivatePath(resolvedRoot, suffix.split(sep), fault);
+}
+
 function assertPrivateFileDescriptor(descriptor) {
 	const stats = fstatSync(descriptor, { bigint: true });
 	if (!stats.isFile())
@@ -216,6 +235,186 @@ function assertPrivateFileDescriptor(descriptor) {
 			"private state file has an unexpected link count",
 		);
 	return stats;
+}
+
+export function readStablePrivateBytes(
+	path,
+	{ root, maxBytes = 1024 * 1024, allowEmpty = false } = {},
+) {
+	requireNoFollow();
+	assertPrivateChain(root ?? dirname(path), dirname(path));
+	let descriptor;
+	try {
+		descriptor = openSync(path, constants.O_RDONLY | NOFOLLOW);
+		const before = assertPrivateFileDescriptor(descriptor);
+		if (before.size > BigInt(maxBytes) || (!allowEmpty && before.size < 1n)) {
+			throw kernelError("invalid_json", "private state file size is invalid");
+		}
+		const pathStats = lstatSync(path, { bigint: true });
+		if (
+			pathStats.isSymbolicLink() ||
+			pathStats.dev !== before.dev ||
+			pathStats.ino !== before.ino
+		) {
+			throw kernelError(
+				"path_mismatch",
+				"private state path no longer identifies the opened file",
+			);
+		}
+		const bytes = readFileSync(descriptor);
+		const after = assertPrivateFileDescriptor(descriptor);
+		const finalPathStats = lstatSync(path, { bigint: true });
+		if (
+			before.dev !== after.dev ||
+			before.ino !== after.ino ||
+			before.size !== after.size ||
+			BigInt(bytes.length) !== after.size ||
+			finalPathStats.dev !== after.dev ||
+			finalPathStats.ino !== after.ino
+		) {
+			throw kernelError(
+				"bookkeeping_unknown",
+				"private state file changed while reading",
+			);
+		}
+		return Buffer.from(bytes);
+	} catch (error) {
+		if (error?.code === "ELOOP")
+			throw kernelError(
+				"state_symlink",
+				"private state file is a symlink",
+				error,
+			);
+		if (error?.code === "ENOENT")
+			throw kernelError(
+				"state_unknown",
+				"private state file is missing",
+				error,
+			);
+		if (error instanceof StateKernelError) throw error;
+		throw kernelError(
+			"bookkeeping_unknown",
+			"cannot read private state file",
+			error,
+		);
+	} finally {
+		if (descriptor !== undefined) closeSync(descriptor);
+	}
+}
+
+export function publishExclusivePrivateBytes(
+	path,
+	bytes,
+	{ root, maxBytes = 1024 * 1024, fault, scope = "byte_publish" } = {},
+) {
+	requireNoFollow();
+	if (!(bytes instanceof Uint8Array) || bytes.byteLength > maxBytes)
+		throw kernelError(
+			"invalid_contract",
+			"private publication bytes are invalid",
+		);
+	const parent = dirname(path);
+	assertPrivateChain(root ?? parent, parent);
+	if (inspectExistingDestination(path))
+		throw kernelError(
+			"state_exists",
+			"private state destination already exists",
+		);
+	let descriptor;
+	let created = false;
+	let synced = false;
+	try {
+		checkpoint(fault, `${scope}.before_open`);
+		descriptor = openSync(
+			path,
+			constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | NOFOLLOW,
+			FILE_MODE,
+		);
+		created = true;
+		fchmodSync(descriptor, FILE_MODE);
+		writeFileSync(descriptor, bytes);
+		checkpoint(fault, `${scope}.after_write`);
+		fsyncSync(descriptor);
+		checkpoint(fault, `${scope}.after_file_fsync`);
+		closeSync(descriptor);
+		descriptor = undefined;
+		const observed = readStablePrivateBytes(path, {
+			root: root ?? parent,
+			maxBytes,
+			allowEmpty: true,
+		});
+		if (!observed.equals(Buffer.from(bytes)))
+			throw kernelError("digest_mismatch", "published private bytes changed");
+		fsyncDirectory(parent);
+		synced = true;
+		checkpoint(fault, `${scope}.after_directory_fsync`);
+		return observed;
+	} catch (error) {
+		if (descriptor !== undefined) closeSync(descriptor);
+		if (created) {
+			const failure = kernelError(
+				"durability_unknown",
+				"exclusive private byte publication is uncertain",
+				error,
+			);
+			failure.publicationDurable = synced;
+			throw failure;
+		}
+		if (error instanceof StateKernelError) throw error;
+		throw kernelError(
+			"durability_unknown",
+			"cannot publish private bytes",
+			error,
+		);
+	}
+}
+
+export function copyExclusivePrivateBytes(
+	sourcePath,
+	destinationPath,
+	{ sourceRoot, destinationRoot, maxBytes, fault, scope = "byte_copy" } = {},
+) {
+	const bytes = readStablePrivateBytes(sourcePath, {
+		root: sourceRoot,
+		maxBytes,
+	});
+	return publishExclusivePrivateBytes(destinationPath, bytes, {
+		root: destinationRoot,
+		maxBytes,
+		fault,
+		scope,
+	});
+}
+
+export function scanExactDirectory(path, { root } = {}) {
+	assertPrivateChain(root ?? path, path);
+	const entries = readdirSync(path, { withFileTypes: true });
+	return Object.freeze(
+		entries
+			.map((entry) => {
+				const entryPath = join(path, entry.name);
+				const stats = lstatSync(entryPath, { bigint: true });
+				return Object.freeze({
+					name: entry.name,
+					type: entry.isDirectory()
+						? "directory"
+						: entry.isFile()
+							? "file"
+							: entry.isSymbolicLink()
+								? "symlink"
+								: "other",
+					device: stats.dev.toString(10),
+					inode: stats.ino.toString(10),
+					mode: Number(stats.mode & 0o777n),
+					owner: stats.uid.toString(10),
+					linkCount: stats.nlink.toString(10),
+					size: stats.size.toString(10),
+				});
+			})
+			.sort((left, right) =>
+				Buffer.compare(Buffer.from(left.name), Buffer.from(right.name)),
+			),
+	);
 }
 
 export function readPrivateJson(path, validator, { root, maxBytes } = {}) {
@@ -577,7 +776,11 @@ function workspaceKey(workspaceId) {
 	return sha256(`herdr-conductor-workspace-v1\0${workspaceId}`);
 }
 
-export function workspacePaths(store, workspaceId, { create = false, fault } = {}) {
+export function workspacePaths(
+	store,
+	workspaceId,
+	{ create = false, fault } = {},
+) {
 	const key = workspaceKey(workspaceId);
 	const parts = ["workspaces", key];
 	const directory = create
@@ -650,15 +853,36 @@ function runPaths(
 				fault,
 			)
 		: join(directory, "operation-guards");
+	const stage2Directories = Object.fromEntries(
+		[
+			["contractsDir", ["contracts"]],
+			["tasksDir", ["contracts", "tasks"]],
+			["reportsDir", ["contracts", "reports"]],
+			["outboxesDir", ["outboxes"]],
+			["gateSourcesDir", ["gate-sources"]],
+		].map(([name, suffix]) => [
+			name,
+			create
+				? ensurePrivatePath(
+						store.repositoryDir,
+						[...relativeParts, ...suffix],
+						fault,
+					)
+				: join(directory, ...suffix),
+		]),
+	);
 	if (!create) {
 		assertPrivateChain(store.stateRoot, directory);
 		assertPrivateChain(store.stateRoot, operationsDir);
 		assertPrivateChain(store.stateRoot, operationGuardsDir);
+		for (const stage2Directory of Object.values(stage2Directories))
+			assertPrivateChain(store.stateRoot, stage2Directory);
 	}
 	return {
 		directory,
 		operationsDir,
 		operationGuardsDir,
+		...stage2Directories,
 		statePath: join(directory, "run.json"),
 		activationGuardPath: join(directory, "activation.guard.json"),
 	};
@@ -1027,6 +1251,71 @@ export function loadActiveRun(
 		);
 	}
 	return result;
+}
+
+export function loadArchivedRun(store, { workspaceId } = {}) {
+	const workspace = workspacePaths(store, workspaceId);
+	const pointers = scanActivePointers(store, workspace);
+	if (pointers.length !== 0)
+		throw kernelError(
+			"bookkeeping_unknown",
+			"archived status cannot coexist with an active pointer",
+		);
+	const states = scanRunStates(store, workspace);
+	if (states.some(({ activationGuard }) => activationGuard !== null))
+		throw kernelError(
+			"recovery_required",
+			"workspace has an unresolved activation guard",
+		);
+	if (states.some(({ state }) => state.status !== "archived"))
+		throw kernelError(
+			"bookkeeping_unknown",
+			"non-archived run state has no active pointer",
+		);
+	const terminals = [];
+	for (const selected of states) {
+		const candidate = {
+			store,
+			workspace,
+			pointer: null,
+			pointerPath: join(
+				workspace.activeDir,
+				`${selected.state.run_id}--${selected.state.generation}.json`,
+			),
+			state: selected.state,
+			paths: selected.paths,
+			journal: [],
+		};
+		candidate.journal = scanJournal(store, candidate, {
+			allowGuards: true,
+			allowArchiveTransition: true,
+		});
+		const archives = candidate.journal.filter(
+			(entry) => entry.operation_type === "run.archive",
+		);
+		if (
+			archives.length === 1 &&
+			archives[0].phase === "observed" &&
+			candidate.journal.guards.length === 0
+		)
+			terminals.push(candidate);
+	}
+	if (terminals.length === 0)
+		throw kernelError("state_unknown", "workspace has no archived terminal");
+	terminals.sort((left, right) =>
+		Buffer.from(right.state.updated_at).compare(
+			Buffer.from(left.state.updated_at),
+		),
+	);
+	if (
+		terminals.length > 1 &&
+		terminals[0].state.updated_at === terminals[1].state.updated_at
+	)
+		throw kernelError(
+			"bookkeeping_unknown",
+			"latest archived terminal is ambiguous",
+		);
+	return terminals[0];
 }
 
 function inspectLock(store) {

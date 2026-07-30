@@ -94,6 +94,12 @@ export function validateRepository(root) {
 	if (!packageJson || !manifest)
 		return { errors, entrypointCount: 0, scriptCount: 0 };
 
+	if (
+		manifest.id !== "structupath.conductor" ||
+		manifest.min_herdr_version !== "0.7.5" ||
+		JSON.stringify(manifest.platforms) !== JSON.stringify(["macos", "linux"])
+	)
+		errors.push("manifest identity/runtime/platform contract differs");
 	if (typeof manifest.version !== "string") {
 		errors.push("manifest version must be a string");
 	} else if (packageJson.version !== manifest.version) {
@@ -101,6 +107,44 @@ export function validateRepository(root) {
 			`version mismatch: package.json=${packageJson.version} herdr-plugin.toml=${manifest.version}`,
 		);
 	}
+
+	const expectedActions = [
+		"assemble",
+		"board",
+		"status",
+		"harvest",
+		"stand-down",
+	];
+	if (
+		!Array.isArray(manifest.actions) ||
+		JSON.stringify(manifest.actions.map(({ id }) => id)) !==
+			JSON.stringify(expectedActions)
+	)
+		errors.push(
+			"manifest must declare exactly the five ordered Stage 2 actions",
+		);
+	for (const action of manifest.actions ?? []) {
+		const allowed = ["id", "title", "description", "command"];
+		if (Object.keys(action).some((key) => !allowed.includes(key)))
+			errors.push(
+				`action ${action.id ?? "unknown"} declares unsupported arguments or fields`,
+			);
+		if (
+			JSON.stringify(action.command) !==
+			JSON.stringify(["bash", `scripts/${action.id}.sh`])
+		)
+			errors.push(`action ${action.id ?? "unknown"} command/arguments differ`);
+	}
+	if (
+		!Array.isArray(manifest.panes) ||
+		manifest.panes.length !== 1 ||
+		manifest.panes[0]?.id !== "board-pane" ||
+		JSON.stringify(manifest.panes[0]?.command) !==
+			JSON.stringify(["bash", "scripts/board-pane.sh"])
+	)
+		errors.push(
+			"manifest must declare one passive board pane without arguments",
+		);
 
 	const commands = manifestCommands(manifest, errors);
 	let entrypointCount = 0;

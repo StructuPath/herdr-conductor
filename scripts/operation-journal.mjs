@@ -1,8 +1,16 @@
 #!/usr/bin/env node
-import { readdirSync, unlinkSync } from "node:fs";
+import {
+	closeSync,
+	constants,
+	fstatSync,
+	openSync,
+	readFileSync,
+	unlinkSync,
+} from "node:fs";
 import { join } from "node:path";
 import {
 	PRIVATE_STATE_VERSION,
+	parseStrictJsonBytes,
 	validateGeneration,
 	validateId,
 	validateJournalEntry,
@@ -16,14 +24,17 @@ import {
 	checkpoint,
 	compareRunIdentity,
 	fsyncDirectory,
+	inspectRepositoryLock,
 	journalEntryDigest,
 	kernelError,
 	lstat,
 	loadActiveRun,
 	publishExclusiveJson,
+	readPrivateJson,
 	removePrivateGuard,
 	sameRepository,
 	scanActivePointers,
+	scanExactDirectory,
 	scanJournal,
 	scanRunStates,
 	workspacePaths,
@@ -41,6 +52,30 @@ function journalGuardPath(active, sequence, operationId) {
 		active.paths.operationGuardsDir,
 		`${String(sequence).padStart(10, "0")}-${operationId}.json`,
 	);
+}
+
+function readUncertainJournal(path) {
+	let descriptor;
+	try {
+		descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+		const stats = fstatSync(descriptor);
+		if (
+			!stats.isFile() ||
+			(stats.mode & 0o777) !== 0o600 ||
+			stats.uid !== process.getuid() ||
+			stats.nlink < 1 ||
+			stats.nlink > 2
+		)
+			throw kernelError(
+				"bookkeeping_unknown",
+				"uncertain archive journal identity is invalid",
+			);
+		return validateJournalEntry(
+			parseStrictJsonBytes(readFileSync(descriptor), { maxBytes: 1_048_576 }),
+		);
+	} finally {
+		if (descriptor !== undefined) closeSync(descriptor);
+	}
 }
 
 function validateOperationRequest(request) {
@@ -62,6 +97,16 @@ function validateOperationRequest(request) {
 	validateId(request.subject.id, "subject id");
 	validateGeneration(request.subject.generation, "subject generation");
 	validateKey(request.requestDigest, "request digest");
+	if (
+		request.operationType === "report.reject" &&
+		request.operationId !==
+			`report-reject-${request.subject.id}-${request.subject.generation}`
+	) {
+		throw kernelError(
+			"invalid_state",
+			"report rejection operation id must bind the full report generation",
+		);
+	}
 }
 
 function validateOperationSubject(active, operationType, subject) {
@@ -72,7 +117,10 @@ function validateOperationSubject(active, operationType, subject) {
 			"operation subject kind is incompatible with its operation type",
 		);
 	}
-	if (operationType === "run.archive") {
+	if (
+		operationType === "run.archive" ||
+		operationType === "run.stand-down.begin"
+	) {
 		if (
 			subject.id !== active.state.run_id ||
 			subject.generation !== active.state.generation
@@ -84,7 +132,7 @@ function validateOperationSubject(active, operationType, subject) {
 		}
 		return;
 	}
-	if (policy.prerequisite !== null) {
+	if (["git.merge", "pane.close"].includes(operationType)) {
 		const matching = active.journal.filter(
 			(entry) =>
 				entry.operation_type === policy.prerequisite &&
@@ -93,10 +141,52 @@ function validateOperationSubject(active, operationType, subject) {
 				entry.subject.generation === subject.generation &&
 				entry.observed_identity !== null,
 		);
-		if (matching.length !== 1) {
+		if (matching.length !== 1)
 			throw kernelError(
 				"stale_generation",
 				"canonical creation journal subject is missing, duplicate, or stale",
+			);
+	}
+	if (operationType === "integration.harvest") {
+		const reconciliations = active.journal.filter(
+			(entry) =>
+				entry.operation_type === "integration.reconcile" &&
+				entry.phase === "observed" &&
+				entry.subject.id === subject.id &&
+				entry.subject.generation === subject.generation,
+		);
+		if (reconciliations.length !== 1)
+			throw kernelError(
+				"bookkeeping_unknown",
+				"integration harvest requires one observed reconciliation",
+			);
+	}
+	if (operationType === "gate-source.create") {
+		const integrations = active.journal.filter(
+			(entry) =>
+				entry.operation_type === "integration.harvest" &&
+				entry.phase === "observed",
+		);
+		if (integrations.length !== 1)
+			throw kernelError(
+				"bookkeeping_unknown",
+				"gate source creation requires one observed integration harvest",
+			);
+	}
+	if (["report.harvest", "report.reject"].includes(operationType)) {
+		const opposite =
+			operationType === "report.harvest" ? "report.reject" : "report.harvest";
+		if (
+			active.journal.some(
+				(entry) =>
+					entry.operation_type === opposite &&
+					entry.subject.id === subject.id &&
+					entry.subject.generation === subject.generation,
+			)
+		) {
+			throw kernelError(
+				"operation_conflict",
+				"report acceptance and rejection are mutually exclusive",
 			);
 		}
 	}
@@ -206,36 +296,6 @@ function transitionJournalEntry(
 	return validateJournalEntry(transitioned);
 }
 
-function cleanExactArchivePublishTemp(directory, operationId) {
-	const escaped = operationId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-	const pattern = new RegExp(
-		`^\\.tmp-(\\d{10}-${escaped}\\.json)-[0-9]+-[a-f0-9]{24}$`,
-	);
-	for (const entry of readdirSync(directory, { withFileTypes: true })) {
-		const match = pattern.exec(entry.name);
-		if (!match) continue;
-		if (!entry.isFile())
-			throw kernelError("bookkeeping_unknown", "archive temp is not a file");
-		const destination = join(directory, match[1]);
-		const destinationStats = lstat(destination);
-		const tempStats = lstat(join(directory, entry.name));
-		if (
-			!destinationStats ||
-			!tempStats ||
-			destinationStats.dev !== tempStats.dev ||
-			destinationStats.ino !== tempStats.ino ||
-			destinationStats.nlink !== 2n ||
-			tempStats.nlink !== 2n
-		)
-			throw kernelError(
-				"bookkeeping_unknown",
-				"archive temp identity is ambiguous",
-			);
-		unlinkSync(join(directory, entry.name));
-		fsyncDirectory(directory);
-	}
-}
-
 function loadArchiveCandidate(
 	store,
 	{ workspaceId, runId, runGeneration, operationId },
@@ -258,8 +318,6 @@ function loadArchiveCandidate(
 			"archive run has duplicate active pointers",
 		);
 	const selected = states[0];
-	cleanExactArchivePublishTemp(selected.paths.operationsDir, operationId);
-	cleanExactArchivePublishTemp(selected.paths.operationGuardsDir, operationId);
 	if (selected.activationGuard)
 		throw kernelError(
 			"recovery_required",
@@ -327,32 +385,117 @@ function loadArchiveCandidate(
 	};
 }
 
-export function findRecoverableArchive(store, { workspaceId } = {}) {
+export function inspectArchiveUncertainty(store, { workspaceId } = {}) {
 	const workspace = workspacePaths(store, workspaceId);
+	const pointers = scanActivePointers(store, workspace);
+	const lock = inspectRepositoryLock(store);
 	const candidates = [];
-	for (const { state } of scanRunStates(store, workspace)) {
-		const operationId = `archive-${state.generation.slice(0, 12)}`;
-		const candidate = loadArchiveCandidate(store, {
-			workspaceId,
-			runId: state.run_id,
-			runGeneration: state.generation,
-			operationId,
-		});
+	for (const selected of scanRunStates(store, workspace)) {
 		if (
-			candidate.entry &&
-			(candidate.entry.phase === "intent" ||
-				candidate.guard !== null ||
-				lstat(candidate.active.pointerPath) !== null)
+			selected.state.workspace_id !== workspaceId ||
+			!sameRepository(selected.state.repository, store.repository)
 		)
-			candidates.push(candidate);
-	}
-	if (candidates.length === 0) return null;
-	if (candidates.length !== 1)
-		throw kernelError(
-			"bookkeeping_unknown",
-			"archive recovery authority is ambiguous",
+			continue;
+		const pointer = pointers.find(
+			({ value }) =>
+				value.run_id === selected.state.run_id &&
+				value.generation === selected.state.generation,
 		);
-	return candidates[0];
+		const active = {
+			store,
+			workspace,
+			pointer: pointer?.value ?? null,
+			pointerPath:
+				pointer?.path ??
+				join(
+					workspace.activeDir,
+					`${selected.state.run_id}--${selected.state.generation}.json`,
+				),
+			state: selected.state,
+			paths: selected.paths,
+			journal: [],
+		};
+		let journal;
+		let guards;
+		try {
+			journal = scanJournal(store, active, {
+				allowGuards: true,
+				allowArchiveTransition: true,
+			});
+			guards = journal.guards;
+		} catch {
+			journal = scanExactDirectory(active.paths.operationsDir, {
+				root: store.stateRoot,
+			})
+				.filter(
+					(entry) =>
+						entry.type === "file" && /^\d{10}-.+\.json$/.test(entry.name),
+				)
+				.map((entry) => {
+					const path = join(active.paths.operationsDir, entry.name);
+					try {
+						return readPrivateJson(path, validateJournalEntry, {
+							root: store.stateRoot,
+							maxBytes: 1_048_576,
+						});
+					} catch {
+						return readUncertainJournal(path);
+					}
+				});
+			guards = scanExactDirectory(active.paths.operationGuardsDir, {
+				root: store.stateRoot,
+			})
+				.filter(
+					(entry) =>
+						entry.type === "file" && /^\d{10}-.+\.json$/.test(entry.name),
+				)
+				.map((entry) => {
+					const path = join(active.paths.operationGuardsDir, entry.name);
+					try {
+						return readPrivateJson(path, validateJournalEntry, {
+							root: store.stateRoot,
+							maxBytes: 1_048_576,
+						});
+					} catch {
+						return readUncertainJournal(path);
+					}
+				});
+		}
+		for (const entry of journal.filter(
+			(candidate) => candidate.operation_type === "run.archive",
+		)) {
+			const guard = guards.find(
+				(candidate) => candidate.operation_id === entry.operation_id,
+			);
+			const completedArchive =
+				entry.phase === "observed" &&
+				selected.state.status === "archived" &&
+				!pointer &&
+				!guard;
+			if (!completedArchive)
+				candidates.push({
+					run_id: selected.state.run_id,
+					run_generation: selected.state.generation,
+					operation_id: entry.operation_id,
+					journal_phase: entry.phase,
+					state_status: selected.state.status,
+					pointer_present: Boolean(pointer),
+					guard_present: Boolean(guard),
+					lock_status: lock.status,
+				});
+		}
+	}
+	if (candidates.length > 1)
+		throw kernelError(
+			"recovery_required",
+			"archive restart authority is ambiguous",
+		);
+	if (candidates.length === 0) return null;
+	return Object.freeze({
+		classification: "archive_uncertain",
+		error_code: "recovery_required",
+		...candidates[0],
+	});
 }
 
 export function archiveActiveRun(
@@ -380,7 +523,7 @@ export function archiveActiveRun(
 		runGeneration,
 		operationId,
 	});
-	let { active, entry, guard } = loaded;
+	let { active, entry } = loaded;
 	validateOperationSubject(active, "run.archive", subject);
 	if (entry) {
 		if (
@@ -393,104 +536,27 @@ export function archiveActiveRun(
 				"operation_conflict",
 				"archive operation input changed",
 			);
-		if (entry.phase === "needs_attention")
-			throw kernelError(
-				"recovery_required",
-				"archive has an ambiguous journal result",
-			);
-		if (
-			entry.phase === "intent" &&
-			active.state.journal_sequence !== entry.sequence
-		) {
-			const recoveredIntentHead = {
-				...active.state,
-				revision: active.state.revision + 1,
-				journal_sequence: entry.sequence,
-				journal_head: entry.entry_digest,
-				updated_at: new Date().toISOString(),
-			};
-			writeAtomicJson(
-				active.paths.statePath,
-				recoveredIntentHead,
-				validateRunState,
-				{
-					root: handle.store.stateRoot,
-					fault,
-					scope: "archive_intent_head_recover",
-				},
-			);
-			active.state = validateRunState(recoveredIntentHead);
-		}
-		if (entry.phase === "intent" && !guard) {
-			publishGuard(active, entry, fault, "archive_guard");
-			guard = entry;
-			checkpoint(fault, "archive.after_guard_durable");
-		}
-		if (entry.phase === "observed") {
-			if (active.state.status !== "archived" || lstat(active.pointerPath))
-				throw kernelError(
-					"recovery_required",
-					"archive result precedes its state transition",
-				);
-			if (active.state.journal_head !== entry.entry_digest) {
-				const recoveredHead = {
-					...active.state,
-					revision: active.state.revision + 1,
-					journal_head: entry.entry_digest,
-					updated_at: new Date().toISOString(),
-				};
-				writeAtomicJson(
-					active.paths.statePath,
-					recoveredHead,
-					validateRunState,
-					{
-						root: handle.store.stateRoot,
-						fault,
-						scope: "archive_result_head_recover",
-					},
-				);
-				active.state = validateRunState(recoveredHead);
-			}
-			if (guard)
-				removePrivateGuard(
-					journalGuardPath(active, entry.sequence, operationId),
-					{
-						parent: active.paths.operationGuardsDir,
-						fault,
-						scope: "archive_guard",
-					},
-				);
-			return {
-				replayed: true,
-				resultDigest: entry.result_digest,
-				state: active.state,
-			};
-		}
-	} else {
-		if (active.state.status !== "active" || active.pointer === null)
-			throw kernelError(
-				"recovery_required",
-				"archive cannot begin from this state",
-			);
-		entry = createIntent(
-			active,
-			operationId,
-			"run.archive",
-			subject,
-			requestDigest,
+		throw kernelError(
+			"recovery_required",
+			"existing archive authority is uncertain and cannot be replayed",
 		);
-		publishIntent(
-			active,
-			entry,
-			fault,
-			"archive_intent",
-			"archive_intent_head",
-		);
-		checkpoint(fault, "archive.after_intent_durable");
-		publishGuard(active, entry, fault, "archive_guard");
-		guard = entry;
-		checkpoint(fault, "archive.after_guard_durable");
 	}
+	if (active.state.status !== "active" || active.pointer === null)
+		throw kernelError(
+			"recovery_required",
+			"archive cannot begin from this state",
+		);
+	entry = createIntent(
+		active,
+		operationId,
+		"run.archive",
+		subject,
+		requestDigest,
+	);
+	publishIntent(active, entry, fault, "archive_intent", "archive_intent_head");
+	checkpoint(fault, "archive.after_intent_durable");
+	publishGuard(active, entry, fault, "archive_guard_publish");
+	checkpoint(fault, "archive.after_guard_durable");
 	try {
 		assertLock(handle);
 		if (active.state.status === "active") {
@@ -534,7 +600,7 @@ export function archiveActiveRun(
 		removePrivateGuard(journalGuardPath(active, entry.sequence, operationId), {
 			parent: active.paths.operationGuardsDir,
 			fault,
-			scope: "archive_guard",
+			scope: "archive_guard_remove",
 		});
 		return {
 			replayed: false,
@@ -544,7 +610,7 @@ export function archiveActiveRun(
 	} catch (error) {
 		throw kernelError(
 			"recovery_required",
-			"archive transition can be retried exactly",
+			"archive transition is uncertain and cannot be replayed",
 			error,
 		);
 	}
@@ -641,7 +707,7 @@ export async function performJournaledOperation(
 		);
 		intentDurable = true;
 		checkpoint(fault, "journal.after_intent_durable");
-		publishGuard(active, intent, fault, "journal_guard");
+		publishGuard(active, intent, fault, "journal_guard_publish");
 		guardDurable = true;
 		checkpoint(fault, "journal.after_guard_durable");
 		assertLock(handle);
@@ -684,7 +750,7 @@ export async function performJournaledOperation(
 		removePrivateGuard(guardPath, {
 			parent: active.paths.operationGuardsDir,
 			fault,
-			scope: "journal_guard",
+			scope: "journal_guard_remove",
 		});
 		return {
 			replayed: false,
@@ -709,7 +775,7 @@ export async function performJournaledOperation(
 					removePrivateGuard(guardPath, {
 						parent: active.paths.operationGuardsDir,
 						fault,
-						scope: "journal_guard",
+						scope: "journal_guard_remove",
 					});
 				} catch {
 					// The durable guard keeps uncertain state from authorizing replay.

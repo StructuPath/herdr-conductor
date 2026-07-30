@@ -1,246 +1,234 @@
-# herdr-conductor
+# Herdr Conductor
 
 > [!IMPORTANT]
-> Conductor `0.2.0` is **Stage 1 attended-operational** on exactly Herdr `0.7.5`.
-> Its strict five-action lifecycle is supported only while an operator explicitly
-> drives it. This status does not claim Stage 2 approval/report contracts, a suite
-> adapter, unattended automation, or recovery tooling. Cooperative same-user
-> TOCTOU limits remain explicit below.
+> Conductor `0.3.0` implements **Stage 2 attended strict task/report contracts**
+> on exactly Herdr `0.7.5`, protocol `17`, API schema `1`. An operator explicitly
+> invokes every transition. This is cooperative same-UID coordination, not
+> authentication, sandboxing, unattended orchestration, or Stage 3
+> approval/apply.
 
-Conductor coordinates role-differentiated builders, validators, and reviewers as
-visible Herdr agent panes. Stage 1 B4 live evidence exercises the complete B3
-lifecycle through the installed action entrypoints. Stage 1 B3 connects attended
-harvest and stand-down
-to the same strict private-state runtime as assemble, board, and status. Every
-action resolves the invoking physical Git repository and exact Herdr workspace
-from `HERDR_PLUGIN_CONTEXT_JSON`; there
-is no `CONDUCTOR_REPO`, ambient-cwd, process-ID, or newest-global fallback.
+Conductor coordinates task-bound producer and gate roles through five installed
+Herdr actions and one passive board pane. One runtime authority in
+`scripts/stage1-runtime.mjs` owns the complete lifecycle. It preserves the
+Stage 1 physical repository/workspace/run identity, hash-chained journal,
+repository
+mutation lock, Git compare-and-swap, exact pane identity, conservative crash
+truth, archive transition, and retained resources.
 
-All five actions are gated to exactly Herdr `0.7.5` (protocol `17`, schema `1`)
-before lifecycle state is read or mutated, and require Node.js `>=20`. The B1
-[private state contract](docs/private-state-v1.md) documents strict JSON,
-physical repository identity, private persistence, locks, and journal crash
-boundaries.
+## Supported contract
 
-![herdr-conductor demo](assets/herdr-conductor-demo.gif)
+Requirements: Herdr exactly `0.7.5`, Node.js 20 or current LTS, Git with 40-hex
+SHA-1 object IDs, Python 3.11+, and macOS or Linux.
 
-**Canonical suite guide:** [Deliver with Conductor](https://github.com/StructuPath/herdr-suite-site/blob/main/docs-src/Conductor.md).
-Conductor remains separate from Swarm and does not provide an automatic pipeline.
+For every effecting action, Conductor:
 
-## Stage 1 B3 guarantees
+- accepts only `HERDR_PLUGIN_CONTEXT_JSON`; there is no `CONDUCTOR_REPO`,
+  ambient-cwd, process-ID, or newest-global fallback;
+- binds one physical Git common-directory identity and one Herdr workspace;
+- requires exactly one active version-2 run/generation and complete strict
+  journal/inventory authority;
+- holds one cooperative repository mutation lock while changing Git, task,
+  report, pane, agent, lifecycle, or active authority; and
+- fails closed on malformed, foreign, stale, duplicate, replayed, ambiguous, or
+  durability-uncertain state.
 
-For all five actions:
+Configuration v2 publishes every producer source, immutable task, and empty
+private report outbox before creating its pane or agent. A task precommits the
+source/task/outbox/pane/agent generations and request digests. Herdr action and
+agent argument arrays stay empty; Conductor does not launch an autonomous
+mission.
 
-- `HERDR_PLUGIN_CONTEXT_JSON.workspace_cwd` must be the canonical Git repository
-  root and `workspace_id` must be a bounded exact identifier. Assemble also
-  requires `focused_pane_id`, live-fetches it before state creation and again
-  immediately before every split, and requires its workspace to match exactly.
-  Missing, malformed, duplicate-key, foreign, or stale context fails closed.
-- Active state is keyed by physical Git common-directory identity and workspace.
-  Repositories sharing one state root and workspaces sharing one repository do
-  not select one another's runs.
-- Assemble resolves and records one fixed fork SHA and the exact canonical
-  integration target path, physical common directory, full ref, head/fork, and
-  registered membership before lifecycle effects. Run IDs and run generations
-  are unpredictable. Every writing role gets
-  a run-unique full ref under `refs/heads/conductor/<run-id>/<role>` and every
-  role gets a run-unique bounded agent name.
-- Worktree creation, pane creation, and agent start each publish a durable intent
-  before the external command. The terminal journal record contains the exact
-  observed worktree, pane, or pane-plus-agent identity and a digest.
-- Pane metadata carries the run and resource generation. Assemble reads both
-  tokens back from pane and named-agent views and requires exact workspace, pane,
-  terminal, session, name, run, and generation agreement. Both `cwd` and
-  `foreground_cwd` are independently required, physically canonicalized, and
-  required to equal the intended cwd in both views.
-- A crash after durable intent or an uncertain external effect leaves the run in
-  explicit recovery-required state. The runtime never adopts a same-named ref,
-  worktree, pane, or agent and never silently replays an uncertain operation.
-- Board and status load only the invoking context's strict active run. Live status
-  re-reads both the pane and named agent; changed identity is reported as
-  `foreign_or_stale`, and unavailable identity is reported as `unavailable`.
+Reports are closed canonical JSON. The task-bound publisher reads only bounded
+stdin through actual EOF, accepts at most 1,048,576 bytes, validates canonical
+bytes/digest/task/agent/source authority before publication, and commits one
+immutable payload/marker slot. It does not accept a payload path, destination,
+alternate FD, environment payload, or replacement report. Report command and
+criterion results, `delivered`, `approve`, and `pass` remain unauthenticated
+worker assertions—not proof, approval receipts, or authorization. Schema v1
+requires empty validator source outputs and `artifacts: []`.
 
-Private state remains cooperative same-user coordination, not authentication.
-The repository lock cannot prevent another same-user process from mutating Git
-immediately after harvest's final validation, and Herdr 0.7.5 has no conditional
-pane-close API. Stand-down re-reads the full tuple immediately before
-`pane.close`, but these documented same-user TOCTOU limitations remain.
+Attended `harvest` collects terminal reports in configured role order. A complete
+invalid committed report is durably rejected; incomplete observation remains
+retryable or uncertain according to the exact failure boundary. Integration
+requires one accepted completed/delivered report from every producer, performs
+two collective source/path/target preflights, builds deterministic synthetic
+commits, and moves the target with exactly zero or one compare-and-swap. Missing,
+blocked, failed, rejected, incomplete, conflicting, drifted, or raced selection
+performs zero target CAS.
 
-## B4 live smoke and later-stage holds
+Reviewer and validator tasks use distinct retained detached worktrees at the exact
+observed integration SHA/tree. Their sources are mode-hardened (`0555`
+directories, `0444` non-executable files, retained executable bits) and their
+writable report outboxes remain outside source. This is an ordinary-write and
+review boundary, not malicious same-UID enforcement. Gate reports require empty
+changed paths and artifacts and exhaustive worker-asserted requirement results.
 
-The retained [B0 identity capability evidence](docs/evidence/2026-07-28-herdr-0.7.5-identity-capability.md),
-fixtures, negative results, and deterministic checker remain foundational evidence
-for the full live identity tuple; B4 complements rather than supersedes them.
-The retained [B4 live smoke report](docs/evidence/2026-07-28-stage1-b4-live-smoke.md)
-and machine evidence record one successful, explicitly opted-in disposable run
-through all five installed actions. The smoke used a real supported agent,
-verified cross-workspace/repository isolation, harvested an observed writer
-commit, archived the run, closed the exact pane, and confirmed retained
-worktree/branch/artifacts. Release `0.2.0` records that bounded Stage 1
-attended-operational status; it does not expand the held Stage 2 surface. The
-deterministic evidence checker resolves the candidate with argument-safe Git,
-requires it to be an ancestor of the evidence head, and validates every retained
-runtime-source digest against both that candidate tree and the current checkout
-without rerunning Herdr. The report is sanitized operator-observed local evidence,
-not cryptographic remote attestation or authentication against same-UID fabrication.
+Lifecycle scanning derives one disjoint state or fails with
+`bookkeeping_unknown`/`recovery_required`. Stable states cover provisioning,
+waiting reports, terminal rejection, nonprogressable delivery, ready/integrated
+results, gate provisioning/waiting/refusal/collection, every stand-down close
+prefix, and archive. Attended stand-down is available from every stable state,
+binds a deterministic exact pane close set, closes only the next full live tuple,
+and archives only after every close is observed. It never removes product
+worktrees, branches, tasks, outboxes, reports, gate sources, logs, recordings, or
+artifacts.
 
-- `harvest` is explicitly invoked and attended. One repository mutation lock spans
-  canonical journal loading and every source/target preflight. It computes a merge
-  tree and commit from immutable source/target SHAs, then compare-and-swaps the
-  assemble-bound target ref with `git update-ref <ref> <new> <old>`. The verified
-  integration index/worktree is refreshed without moving the ref again. After the
-  journal's post-effect checkpoint and while still holding the repository lock,
-  harvest re-reads the exact target path/common directory/ref/head/membership,
-  expected merged SHA, index tree, and tracked worktree cleanliness immediately
-  before publishing an observed result.
-- `stand-down` closes only panes whose live pane and named-agent views exactly match
-  the canonical journal tuple immediately before close, then archives strict state.
-- Stand-down never removes worktrees or branches and never deletes artifacts,
-  reports, recordings, logs, Guard files, or legacy inventory.
-- Failed or timed-out merge/close is ambiguous, journaled `needs_attention`, and
-  cannot replay. Archive is a separate recoverable private-state transition: its
-  journal is observed only after archived state and active-pointer removal. B3
-  adds no suite receipt, adapter, approval, automation, worktree deletion/prune,
-  or Browser evidence change.
-- Role modes and launch arguments remain cooperative configuration. Guard is
-  observational and cannot prove prevention. Stage 2 owns strict task/report
-  schemas, writable report outboxes, and exact integration-SHA validation.
+## Configuration
 
-Strict v1 state lives only below the private `v1/` child of the configured state
-parent. A pre-existing permissive legacy parent is not authority and is never
-parsed, sourced, migrated, adopted, modified, or dual-written. The shipped
-operational surface contains no second sourceable lifecycle; the journal is the
-one canonical observed-resource authority for B3.
-
-## Team declaration
-
-Create `.herdr-conductor.json` at the repository root:
+Commit `.herdr-conductor.json` in the invoking repository:
 
 ```json
 {
-  "version": 1,
+  "version": 2,
+  "state_root": { "kind": "default" },
+  "worktree_root": ".conductor-worktrees",
   "roles": [
     {
-      "name": "builder-engine",
-      "kind": "claude",
-      "mode": "write"
+      "name": "builder",
+      "contract_role": "builder",
+      "kind": "pi",
+      "mode": "write",
+      "assignment": {
+        "title": "Implement the owned change",
+        "mission": "Complete only the attended task.",
+        "acceptance_criteria": [
+          { "id": "behavior", "text": "The requested behavior is verified." }
+        ],
+        "owned_paths": ["src"],
+        "forbidden_paths": ["secrets"],
+        "required_commands": [
+          { "id": "test", "command": "npm test" }
+        ]
+      },
+      "validator_artifacts": []
     },
     {
       "name": "validator",
-      "kind": "codex",
+      "contract_role": "validator",
+      "kind": "pi",
       "mode": "gated",
-      "launch_args": ["--sandbox", "workspace-write"]
-    },
-    {
-      "name": "reviewer",
-      "kind": "codex",
-      "mode": "read-only",
-      "launch_args": ["--sandbox", "read-only"]
+      "assignment": {
+        "title": "Validate the exact integration",
+        "mission": "Run the attended exact-SHA gate.",
+        "acceptance_criteria": [],
+        "owned_paths": [],
+        "forbidden_paths": [],
+        "required_commands": []
+      },
+      "validator_artifacts": []
     }
   ]
 }
 ```
 
-The config is strict JSON: duplicate keys, unknown or unused legacy fields,
-malformed roles, absolute/external roots, symlinked path components, and
-pre-existing targets are rejected before state or external effects. Worktree
-paths are physically revalidated immediately before `git worktree add`. `write`
-and `gated` roles receive worktrees;
-`read-only` roles use the repository root. These labels do not themselves enforce
-filesystem isolation. B3 does not write task or report files; that work remains
-held for Stage 2.
+`state_root` is required. Use `{ "kind": "default" }` for normal operation.
+The `{ "kind": "absolute", "path": "/canonical/disposable/root" }` variant is
+reserved for a pre-existing canonical directory owned by an isolated harness;
+there is no environment-variable or legacy fallback. Every action rereads this
+configuration and refuses a changed run-bound digest.
 
-## Actions
+Role names are unique and byte-sorted by the runtime where ordering matters.
+Producer modes are `write`; reviewer/validator roles use exact-SHA gate sources.
+Mode labels and file modes are cooperative controls, not authentication.
 
-The manifest exposes exactly five actions:
+## Installed actions
+
+Focus the intended Herdr workspace, then invoke each transition explicitly:
 
 ```bash
-herdr plugin action invoke assemble   --plugin structupath.conductor
-herdr plugin action invoke board      --plugin structupath.conductor
-herdr plugin action invoke status     --plugin structupath.conductor
-herdr plugin action invoke harvest    --plugin structupath.conductor
+herdr plugin action invoke assemble --plugin structupath.conductor
+herdr plugin action invoke board --plugin structupath.conductor
+herdr plugin action invoke status --plugin structupath.conductor
+herdr plugin action invoke harvest --plugin structupath.conductor
 herdr plugin action invoke stand-down --plugin structupath.conductor
 ```
 
-- **Assemble** creates a new strict run, run-unique worktrees/refs, and one
-  identity-observed named agent pane per role. It does not adopt or resume an
-  existing active run.
-- **Snapshot Conductor status** (`board`) prints one JSON snapshot for the
-  invoking repository/workspace. It opens or focuses no pane.
-- **Status** prints the same context-bound state as a table with live identity
-  classification.
-- **Harvest** performs attended, journal-authoritative, identity-checked plain-Git
-  reconciliation into the invoking repository's exact current branch.
-- **Stand down** identity-checks and closes eligible panes, archives strict state,
-  and retains every worktree, branch, artifact, report, recording, log, and Guard
-  file.
+`assemble` returns exact task paths, source roots, outbox slots, and publisher
+commands. A worker sends canonical report bytes to that publisher through stdin.
+`harvest` is explicitly invoked and attended; producer report collection and
+gate report collection may require separate invocations. Board/status are passive
+and infer no missing input. `stand-down` closes only panes that were observed;
+each exact workspace/pane/cwd/generation identity must still match, and the full
+attached-agent tuple is also required when an agent was observed.
 
-The manifest retains a passive `board-pane` entrypoint for an already
-operator-opened plugin pane. It polls the same strict context-bound runtime and
-never drives an agent or writes state.
+## Evidence and release boundary
 
-## Relationship to Swarm and Guard
+Retained Stage 1 B0/B4 artifacts remain historical compatibility evidence. The
+[B4 live smoke report](docs/evidence/2026-07-28-stage1-b4-live-smoke.md) is
+validated against its recorded candidate Git tree, not current Stage 2 bytes.
+It remains sanitized operator-observed local evidence, not remote attestation.
 
-```text
-SWARM explores interchangeable candidates
-    -- explicit human-selected commit -->
-CONDUCTOR coordinates differentiated delivery roles
+Commit A predeclares, but does not contain or claim results for, exactly these
+Commit B paths:
 
-GUARD may observe either workflow; native harness/OS controls enforce.
-```
+- `docs/evidence/stage2-runtime-source-manifest.json`
+- `docs/evidence/2026-07-28-stage2-live-contracts.json`
+- `docs/evidence/2026-07-28-stage2-live-contracts.md`
 
-Conductor does not invoke Swarm, read Swarm state, or share private lifecycle
-state. Concurrent Swarm and Conductor mutation of one Git common directory is
-unsupported.
+After immutable Commit A and a complete external exact-source review with no
+blocker/high/medium finding, the opt-in installed-plugin harness may run. It
+writes the exact private trio only after descriptor-held disposable teardown and
+positive absence proof. Its configuration selects an absolute private-state root
+inside the sealed disposable root. Teardown has no out-of-root deletion API and
+never removes configured shared/default state or product resources. The live run
+is intentionally not part of Commit A or routine checks.
 
-## Install and requirements
+The argument-free release checker reads only immutable Commit B Git-tree blobs,
+reproduces exact Commit A source bytes, requires the exact three-path A..B diff,
+rerenders the human report, validates the embedded external review and sanitized
+output-parent binding, and returns one out-of-band completion digest.
 
-```bash
-herdr plugin install StructuPath/herdr-conductor
-# local development
-herdr plugin link /path/to/herdr-conductor
-```
-
-Requirements: Herdr exactly `0.7.5`, Node.js `>=20`, Python 3 with `tomllib`,
-and Bash 3.2 or newer on macOS or Linux. Windows is not supported.
-
-## Development
+## Verification
 
 ```bash
-npm test
 npm run check
-node --test tests/stage1-runtime-*.test.mjs tests/state-kernel.test.mjs
-# destructive/live and refused unless this exact opt-in is present:
-CONDUCTOR_STAGE1_LIVE_SMOKE=I_UNDERSTAND_THIS_USES_LOCAL_HERDR npm run smoke:stage1:live
+npm run test:stage2
+bash -n scripts/*.sh
 shellcheck --shell=bash scripts/*.sh
+python3 -m py_compile scripts/harness-fs-helper.py
 go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+node --test tests/stage1-runtime-*.test.mjs tests/stage2-*.test.mjs
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for review gates and
-[SECURITY.md](SECURITY.md) for private reporting and safe-use boundaries.
+The live harness requires an explicit candidate, review record, empty canonical
+`0700` output parent, and exact opt-in. Do not run it as a routine test:
 
-## Layout
-
-```text
-herdr-plugin.toml                  five actions and passive board pane
-scripts/stage1-runtime.mjs         sole CLI/lifecycle authority for all five actions
-scripts/git-reconcile.mjs          Git identity, immutable merge, and ref CAS policy
-scripts/herdr-identity.mjs         Herdr version, pane identity, and close policy
-scripts/operation-policy.mjs       shared operation subject/prerequisite metadata
-scripts/private-state-schema.mjs   strict private JSON schemas
-scripts/state-kernel.mjs           persistence, locks, and active state
-scripts/operation-journal.mjs       operation journals and archive recovery
-scripts/*.sh                       thin strict Node action entrypoints
-scripts/run-stage1-live-smoke.mjs  explicit opt-in disposable live harness
-scripts/check-evidence-inventory.mjs  foundational-evidence inventory gate
-scripts/check-b0-identity-evidence.mjs B0 identity-fixture gate
-scripts/check-stage1-live-smoke-evidence.mjs B4 live-evidence gate
-bin/renderer.mjs                   passive strict-state board renderer
-roles/                             future Stage 2 role prompt inputs
-tests/                             deterministic Node and shell regression suite
-docs/private-state-v1.md           private state and crash contract
-docs/evidence/                     candidate-anchored B4 live evidence and source manifest
+```bash
+CONDUCTOR_STAGE2_LIVE_EVIDENCE=I_UNDERSTAND_THIS_USES_LOCAL_HERDR \
+  npm run evidence:stage2:live -- \
+  --candidate <commit-a> \
+  --review-record <external-review.json> \
+  --output-parent <empty-private-directory>
 ```
 
-Historical design records remain under `docs/history/` as inert documentation;
-they are not entrypoints, current guidance, or runtime authority.
+A retained complete trio after a post-proof crash can be revalidated/fsynced
+without rewriting bytes:
+
+```bash
+npm run evidence:stage2:finalize -- \
+  --output-parent <exact-private-directory> \
+  --candidate <commit-a>
+```
+
+## Security and limitations
+
+- Private state, hashes, modes, journals, and local evidence are cooperative
+  same-UID coordination and not authentication. Same-UID processes can race or
+  fabricate them.
+- Git/filesystem final checks and Herdr 0.7.5 pane-ID close retain same-user
+  TOCTOU windows.
+- Worker results are unauthenticated assertions. The retained external-review
+  record uses only fixed independent-human/independence/GO tokens and requires
+  zero findings; those closed assertions remain unauthenticated.
+- Product resources are retained indefinitely and consume cumulative disk.
+- A crash after a possible external effect remains uncertain; Stage 2 has no
+  ambiguous-operation recovery or replay.
+- Guard is observational and cannot prove prevention. Conductor does not invoke
+  Swarm and makes no Browser, suite-adapter, site, sandbox, promotion, or
+  unattended-readiness claim.
+- Stage 3 preview, approval, approval consumption, apply, and recovery are not
+  implemented.
+
+See [SECURITY.md](SECURITY.md), [CONTRIBUTING.md](CONTRIBUTING.md), and
+[docs/private-state-v1.md](docs/private-state-v1.md) for the authoritative
+cooperative threat, candidate/evidence, and private-state boundaries.

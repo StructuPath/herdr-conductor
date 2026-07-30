@@ -220,6 +220,306 @@ function validateWorktreeIdentity(value, label) {
 	return value;
 }
 
+function validateReportRejectionIdentity(value, label) {
+	exactKeys(
+		value,
+		[
+			"document_type",
+			"schema_version",
+			"repository_key",
+			"workspace_id",
+			"run_id",
+			"run_generation",
+			"role_name",
+			"task_id",
+			"task_generation",
+			"task_digest",
+			"report_generation",
+			"raw_payload_sha256",
+			"committed_marker_digest",
+			"failure_class",
+			"validation_input_digest",
+			"source_observation",
+		],
+		label,
+	);
+	if (
+		value.document_type !== "herdr-conductor-report-rejection" ||
+		value.schema_version !== 1
+	)
+		fail("invalid_state", `${label} has the wrong document type or version`);
+	validateKey(value.repository_key, `${label}.repository_key`);
+	validateId(value.workspace_id, `${label}.workspace_id`);
+	validateId(value.run_id, `${label}.run_id`);
+	validateGeneration(value.run_generation, `${label}.run_generation`);
+	stringMatching(
+		value.role_name,
+		/^[a-z][a-z0-9_-]{0,31}$/,
+		`${label}.role_name`,
+	);
+	validateId(value.task_id, `${label}.task_id`);
+	validateGeneration(value.task_generation, `${label}.task_generation`);
+	validateKey(value.task_digest, `${label}.task_digest`);
+	validateGeneration(value.report_generation, `${label}.report_generation`);
+	validateKey(value.raw_payload_sha256, `${label}.raw_payload_sha256`);
+	validateKey(
+		value.committed_marker_digest,
+		`${label}.committed_marker_digest`,
+	);
+	enumValue(
+		value.failure_class,
+		new Set([
+			"report_mismatch",
+			"source_identity",
+			"source_dirty",
+			"path_policy",
+			"task_stale",
+			"requirement_contract",
+		]),
+		`${label}.failure_class`,
+	);
+	validateKey(
+		value.validation_input_digest,
+		`${label}.validation_input_digest`,
+	);
+	if (value.source_observation !== null) {
+		exactKeys(
+			value.source_observation,
+			[
+				"canonical_path",
+				"common_directory",
+				"full_ref",
+				"head_sha",
+				"head_tree_sha",
+				"index_tree_sha",
+				"tracked_status_sha256",
+				"untracked_inventory_sha256",
+				"ignored_inventory_sha256",
+				"computed_changed_paths_sha256",
+				"observed_at",
+			],
+			`${label}.source_observation`,
+		);
+		const observed = value.source_observation;
+		validateCanonicalPath(
+			observed.canonical_path,
+			`${label}.source_observation.canonical_path`,
+		);
+		validateCommonDirectory(
+			observed.common_directory,
+			`${label}.source_observation.common_directory`,
+		);
+		validateFullRef(observed.full_ref, `${label}.source_observation.full_ref`);
+		validateGitObjectId(
+			observed.head_sha,
+			`${label}.source_observation.head_sha`,
+		);
+		validateGitObjectId(
+			observed.head_tree_sha,
+			`${label}.source_observation.head_tree_sha`,
+		);
+		if (observed.index_tree_sha !== null)
+			validateGitObjectId(
+				observed.index_tree_sha,
+				`${label}.source_observation.index_tree_sha`,
+			);
+		for (const field of [
+			"tracked_status_sha256",
+			"untracked_inventory_sha256",
+			"ignored_inventory_sha256",
+			"computed_changed_paths_sha256",
+		])
+			validateKey(observed[field], `${label}.source_observation.${field}`);
+		timestamp(observed.observed_at, `${label}.source_observation.observed_at`);
+	}
+	return value;
+}
+
+function validateGateSourceIdentity(value, label) {
+	exactKeys(
+		value,
+		[
+			"document_type",
+			"schema_version",
+			"root",
+			"common_dir",
+			"head_mode",
+			"base_sha",
+			"integration_sha",
+			"tree_sha",
+			"snapshot_generation",
+			"integration_entry_digest",
+			"registered",
+		],
+		label,
+	);
+	if (
+		value.document_type !== "herdr-conductor-gate-source" ||
+		value.schema_version !== 1
+	)
+		fail("invalid_state", `${label} has the wrong document type or version`);
+	validateCanonicalPath(value.root, `${label}.root`);
+	validateCommonDirectory(value.common_dir, `${label}.common_dir`);
+	if (value.head_mode !== "detached")
+		fail("invalid_state", `${label}.head_mode is invalid`);
+	for (const field of ["base_sha", "integration_sha", "tree_sha"])
+		validateGitObjectId(value[field], `${label}.${field}`);
+	validateGeneration(value.snapshot_generation, `${label}.snapshot_generation`);
+	validateKey(
+		value.integration_entry_digest,
+		`${label}.integration_entry_digest`,
+	);
+	if (value.registered !== true)
+		fail("invalid_state", `${label}.registered is invalid`);
+	return value;
+}
+
+function validateStage2IntegrationIdentity(value, label) {
+	exactKeys(
+		value,
+		[
+			"document_type",
+			"schema_version",
+			"target_ref",
+			"starting_sha",
+			"final_sha",
+			"selection",
+			"cas_count",
+		],
+		label,
+	);
+	if (
+		value.document_type !== "herdr-conductor-stage2-integration" ||
+		value.schema_version !== 1
+	)
+		fail("invalid_state", `${label} has the wrong document type or version`);
+	validateFullRef(value.target_ref, `${label}.target_ref`);
+	validateGitObjectId(value.starting_sha, `${label}.starting_sha`);
+	validateGitObjectId(value.final_sha, `${label}.final_sha`);
+	if (!Array.isArray(value.selection) || value.selection.length > 64)
+		fail("invalid_state", `${label}.selection is invalid`);
+	for (const [index, entry] of value.selection.entries()) {
+		exactKeys(
+			entry,
+			[
+				"role_name",
+				"task_digest",
+				"report_digest",
+				"source_sha",
+				"tree_sha",
+				"source_generation",
+			],
+			`${label}.selection[${index}]`,
+		);
+		stringMatching(
+			entry.role_name,
+			/^[a-z][a-z0-9_-]{0,31}$/,
+			`${label}.selection[${index}].role_name`,
+		);
+		validateKey(entry.task_digest, `${label}.selection[${index}].task_digest`);
+		validateKey(
+			entry.report_digest,
+			`${label}.selection[${index}].report_digest`,
+		);
+		validateGitObjectId(
+			entry.source_sha,
+			`${label}.selection[${index}].source_sha`,
+		);
+		validateGitObjectId(
+			entry.tree_sha,
+			`${label}.selection[${index}].tree_sha`,
+		);
+		validateGeneration(
+			entry.source_generation,
+			`${label}.selection[${index}].source_generation`,
+		);
+	}
+	if (value.cas_count !== (value.selection.length === 0 ? 0 : 1))
+		fail("invalid_state", `${label}.cas_count is invalid`);
+	return value;
+}
+
+function validateStandDownIdentity(value, label) {
+	exactKeys(
+		value,
+		[
+			"document_type",
+			"schema_version",
+			"source_state",
+			"source_journal_head",
+			"reason",
+			"outcome",
+			"close_set",
+			"archive_operation_id",
+		],
+		label,
+	);
+	if (
+		value.document_type !== "herdr-conductor-stage2-stand-down" ||
+		value.schema_version !== 1
+	)
+		fail("invalid_state", `${label} has the wrong document type or version`);
+	validateId(value.source_state, `${label}.source_state`);
+	validateKey(value.source_journal_head, `${label}.source_journal_head`);
+	enumValue(
+		value.reason,
+		new Set([
+			"operator_abandoned",
+			"nonprogressable_delivery",
+			"source_policy_refusal",
+			"clean_provisioning_failure",
+			"missing_report",
+			"normal_completion",
+			"report_rejected",
+		]),
+		`${label}.reason`,
+	);
+	enumValue(
+		value.outcome,
+		new Set(["abandoned", "completed"]),
+		`${label}.outcome`,
+	);
+	if (!Array.isArray(value.close_set) || value.close_set.length > 64)
+		fail("invalid_state", `${label}.close_set is invalid`);
+	const operationIds = new Set();
+	for (const [index, entry] of value.close_set.entries()) {
+		exactKeys(
+			entry,
+			[
+				"role_name",
+				"pane_generation",
+				"pane_entry_digest",
+				"pane_id",
+				"terminal_id",
+				"cwd",
+				"close_operation_id",
+			],
+			`${label}.close_set[${index}]`,
+		);
+		validateId(entry.role_name, `${label}.close_set[${index}].role_name`);
+		validateGeneration(
+			entry.pane_generation,
+			`${label}.close_set[${index}].pane_generation`,
+		);
+		validateKey(
+			entry.pane_entry_digest,
+			`${label}.close_set[${index}].pane_entry_digest`,
+		);
+		validateId(entry.pane_id, `${label}.close_set[${index}].pane_id`);
+		validateId(entry.terminal_id, `${label}.close_set[${index}].terminal_id`);
+		validateCanonicalPath(entry.cwd, `${label}.close_set[${index}].cwd`);
+		validateId(
+			entry.close_operation_id,
+			`${label}.close_set[${index}].close_operation_id`,
+		);
+		if (operationIds.has(entry.close_operation_id))
+			fail("invalid_state", `${label}.close_set is duplicated`);
+		operationIds.add(entry.close_operation_id);
+	}
+	validateId(value.archive_operation_id, `${label}.archive_operation_id`);
+	return value;
+}
+
 function validateMergeIdentity(value, label) {
 	exactKeys(value, ["source_head_sha", "target"], label);
 	validateGitObjectId(value.source_head_sha, `${label}.source_head_sha`);
@@ -450,6 +750,26 @@ export function validateJournalEntry(value) {
 				);
 			else if (policy.observedIdentity === "merge")
 				validateMergeIdentity(
+					value.observed_identity,
+					"journal observed_identity",
+				);
+			else if (policy.observedIdentity === "report-rejection")
+				validateReportRejectionIdentity(
+					value.observed_identity,
+					"journal observed_identity",
+				);
+			else if (policy.observedIdentity === "stage2-integration")
+				validateStage2IntegrationIdentity(
+					value.observed_identity,
+					"journal observed_identity",
+				);
+			else if (policy.observedIdentity === "gate-source")
+				validateGateSourceIdentity(
+					value.observed_identity,
+					"journal observed_identity",
+				);
+			else if (policy.observedIdentity === "stand-down")
+				validateStandDownIdentity(
 					value.observed_identity,
 					"journal observed_identity",
 				);

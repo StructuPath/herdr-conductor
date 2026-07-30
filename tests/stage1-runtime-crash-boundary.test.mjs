@@ -3,14 +3,13 @@ import {
 	assert,
 	spawnSync,
 	readFileSync,
-	rmSync,
 	writeFileSync,
 	dirname,
 	join,
 	assemble,
 	temp,
-	git,
 	repo,
+	privateStateRoot,
 	context,
 	config,
 	deterministicRandom,
@@ -19,8 +18,14 @@ import {
 	readJournals,
 	privateDocuments,
 	inspectKilledOperation,
+	publishWorkerReport,
 	assembledFixture,
 } from "./stage1-runtime-helpers.mjs";
+import {
+	inspectArchiveUncertainty,
+	loadArchivedRun,
+	openRepositoryStore,
+} from "../scripts/state-kernel.mjs";
 
 test("crashes at intent/effect boundaries leave non-replayed truthful state", async () => {
 	for (const [boundary, expectedEffects] of [
@@ -28,11 +33,14 @@ test("crashes at intent/effect boundaries leave non-replayed truthful state", as
 		["journal.after_effect", 1],
 	]) {
 		const repository = repo();
-		const stateRoot = join(temp("conductor-b2-state-"), "state");
+		const stateRoot = privateStateRoot();
 		const fake = new FakeHerdr();
-		const cfg = config(repository, [
-			{ name: "reviewer", kind: "codex", mode: "read-only" },
-		]);
+		const cfg = config(
+			repository,
+			[{ name: "reviewer", kind: "codex", mode: "read-only" }],
+			{},
+			stateRoot,
+		);
 		await expectCodeAsync("recovery_required", () =>
 			assemble({
 				contextJson: context(repository),
@@ -90,11 +98,15 @@ test("SIGKILL boundaries preserve truthful ambiguity and no available path repla
 
 	for (const [operation, boundary] of cases) {
 		const repository = repo();
-		const stateRoot = join(temp("conductor-b2-crash-state-"), "state");
+		const stateRoot = privateStateRoot("conductor-b2-crash-state-");
 		const logPath = join(temp("conductor-b2-crash-log-"), "effects.log");
 		writeFileSync(logPath, "");
-		const mode = operation === "worktree.create" ? "write" : "read-only";
-		const cfg = config(repository, [{ name: "worker", kind: "pi", mode }]);
+		const cfg = config(
+			repository,
+			[{ name: "worker", kind: "pi", mode: "write" }],
+			{},
+			stateRoot,
+		);
 		const target = `${operation}:${boundary}`;
 		const crashed = spawnSync(
 			process.execPath,
@@ -109,11 +121,11 @@ test("SIGKILL boundaries preserve truthful ambiguity and no available path repla
 		const expectedEffects = {
 			"worktree.create:journal.after_intent_durable": 0,
 			"worktree.create:journal.after_effect": 1,
-			"pane.create:journal.after_intent_durable": 0,
-			"pane.create:journal.after_effect": 1,
-			"agent.start:journal.after_intent_durable": 1,
-			"agent.start:journal.after_effect": 3,
-			"agent.start:after_start_before_metadata": 2,
+			"pane.create:journal.after_intent_durable": 1,
+			"pane.create:journal.after_effect": 2,
+			"agent.start:journal.after_intent_durable": 2,
+			"agent.start:journal.after_effect": 4,
+			"agent.start:after_start_before_metadata": 3,
 		}[target];
 		assert.equal(effects.length, expectedEffects, `${target} effect count`);
 		for (const effect of effects) {
@@ -153,13 +165,15 @@ test("B3 SIGKILL at intent, effect, and result boundaries never replays merge or
 	);
 	for (const operation of ["merge", "close"])
 		for (const boundary of [
-			`${operation === "merge" ? "git.merge" : "pane.close"}:journal.after_intent_durable`,
-			`${operation === "merge" ? "git.merge" : "pane.close"}:journal.after_effect`,
-			`${operation === "merge" ? "git.merge" : "pane.close"}:journal_result.after_publish`,
+			`${operation === "merge" ? "integration.reconcile" : "pane.close"}:journal.after_intent_durable`,
+			`${operation === "merge" ? "integration.reconcile" : "pane.close"}:journal.after_effect`,
+			`${operation === "merge" ? "integration.reconcile" : "pane.close"}:journal_result.after_publish`,
 		]) {
 			const fixture = await assembledFixture({
 				roles: [{ name: "builder", kind: "pi", mode: "write" }],
 			});
+			if (operation === "merge")
+				await publishWorkerReport(fixture, fixture.result.workers[0]);
 			const livePath = join(temp("conductor-b3-live-"), "live.json");
 			const effectsPath = join(temp("conductor-b3-effects-"), "effects.log");
 			writeFileSync(
@@ -225,25 +239,53 @@ test("B3 SIGKILL at intent, effect, and result boundaries never replays merge or
 		}
 });
 
-test("true SIGKILL archive recovery is limited to exact missing-active evidence", async () => {
-	const recoverable = new Set([
-		"run.archive:archive.after_pointer_remove",
-		"run.archive:archive_result.after_publish",
-		"run.archive:archive_guard.before_remove",
-	]);
+test("true SIGKILL archive boundaries classify from durable authority without replay", async () => {
 	const child = join(
 		dirname(new URL(import.meta.url).pathname),
 		"fixtures",
 		"b3-crash-child.mjs",
 	);
-	for (const boundary of [
-		"run.archive:archive.after_intent_durable",
-		"run.archive:archive_state.after_publish",
-		"run.archive:archive.after_pointer_remove",
-		"run.archive:archive_result.after_publish",
-		"run.archive:archive_guard.before_remove",
-		"run.archive:archive_guard.after_remove",
-		"run.archive:archive_guard.after_directory_fsync",
+	for (const [boundary, expected] of [
+		[
+			"run.archive:archive.after_intent_durable",
+			{ phase: "intent", status: "active", pointer: true, guard: false },
+		],
+		[
+			"run.archive:archive_state.after_publish",
+			{ phase: "intent", status: "archived", pointer: true, guard: true },
+		],
+		[
+			"run.archive:archive.after_pointer_remove",
+			{ phase: "intent", status: "archived", pointer: false, guard: true },
+		],
+		[
+			"run.archive:archive_result.after_publish",
+			{ phase: "observed", status: "archived", pointer: false, guard: true },
+		],
+		[
+			"run.archive:archive_guard_remove.before_remove",
+			{ phase: "observed", status: "archived", pointer: false, guard: true },
+		],
+		[
+			"run.archive:archive_guard_remove.after_remove",
+			{
+				phase: "observed",
+				status: "archived",
+				pointer: false,
+				guard: false,
+				terminal: true,
+			},
+		],
+		[
+			"run.archive:archive_guard_remove.after_directory_fsync",
+			{
+				phase: "observed",
+				status: "archived",
+				pointer: false,
+				guard: false,
+				terminal: true,
+			},
+		],
 	]) {
 		const fixture = await assembledFixture();
 		const livePath = join(temp("conductor-archive-live-"), "live.json");
@@ -269,19 +311,88 @@ test("true SIGKILL archive recovery is limited to exact missing-active evidence"
 		const crashed = spawnSync(process.execPath, args, { encoding: "utf8" });
 		assert.equal(crashed.signal, "SIGKILL", `${boundary}: ${crashed.stderr}`);
 		const afterCrash = readFileSync(effectsPath, "utf8");
-		const owner = privateDocuments(fixture.stateRoot).find(
+		const effects = afterCrash.trim().split("\n").filter(Boolean);
+		assert.equal(effects.length, 1, `${boundary}: close effect inventory`);
+		assert.deepEqual(JSON.parse(effects[0]).args.slice(0, 2), [
+			"pane",
+			"close",
+		]);
+		const documents = privateDocuments(fixture.stateRoot);
+		const owner = documents.find(
 			({ value }) => value.document_type === "herdr-conductor-repository-lock",
 		);
 		assert.ok(owner, boundary);
-		rmSync(dirname(owner.path), { recursive: true, force: true });
+		const runState = documents.find(
+			({ value }) => value.document_type === "herdr-conductor-run",
+		)?.value;
+		const pointers = documents.filter(
+			({ value }) => value.document_type === "herdr-conductor-active-run",
+		);
+		const archiveEntries = documents.filter(
+			({ value }) =>
+				value.document_type === "herdr-conductor-operation" &&
+				value.operation_type === "run.archive",
+		);
+		const archiveGuards = archiveEntries.filter(({ path }) =>
+			path.includes("/operation-guards/"),
+		);
+		const archiveResults = archiveEntries.filter(({ path }) =>
+			path.includes("/operations/"),
+		);
+		assert.equal(runState.status, expected.status, boundary);
+		assert.equal(pointers.length > 0, expected.pointer, boundary);
+		assert.equal(archiveGuards.length > 0, expected.guard, boundary);
+		assert.equal(archiveResults.length, 1, boundary);
+		assert.equal(archiveResults[0].value.phase, expected.phase, boundary);
+		const store = openRepositoryStore({
+			stateRoot: fixture.stateRoot,
+			repoPath: fixture.repository,
+		});
+		const classification = inspectArchiveUncertainty(store, {
+			workspaceId: fixture.workspace,
+		});
+		if (expected.terminal) {
+			assert.equal(classification, null, boundary);
+			assert.equal(
+				loadArchivedRun(store, { workspaceId: fixture.workspace }).state.status,
+				"archived",
+				boundary,
+			);
+		} else
+			assert.deepEqual(
+				{
+					classification: classification.classification,
+					errorCode: classification.error_code,
+					phase: classification.journal_phase,
+					status: classification.state_status,
+					pointer: classification.pointer_present,
+					guard: classification.guard_present,
+				},
+				{
+					classification: "archive_uncertain",
+					errorCode: "recovery_required",
+					phase: expected.phase,
+					status: expected.status,
+					pointer: expected.pointer,
+					guard: expected.guard,
+				},
+				boundary,
+			);
 		const retry = spawnSync(process.execPath, [...args.slice(0, -1), "never"], {
 			encoding: "utf8",
 		});
 		assert.equal(
-			retry.status === 0,
-			recoverable.has(boundary),
-			`${boundary}: ${retry.stderr}`,
+			retry.status,
+			expected.terminal ? 0 : 1,
+			`${boundary}: restart exit`,
 		);
+		if (!expected.terminal)
+			assert.match(
+				retry.stderr,
+				/recovery_required:archive_uncertain/,
+				`${boundary}: restart classification`,
+			);
 		assert.equal(readFileSync(effectsPath, "utf8"), afterCrash, boundary);
+		assert.deepEqual(privateDocuments(fixture.stateRoot), documents, boundary);
 	}
 });

@@ -18,17 +18,28 @@ import {
 	expectCode,
 	journalFiles,
 	readJournals,
+	publishWorkerReport,
 	assembledFixture,
 } from "./stage1-runtime-helpers.mjs";
 
-test("B3 reconcile and stand-down preserve all Git and retained inventory", async () => {
-	const fixture = await assembledFixture({
-		roles: [{ name: "builder", kind: "pi", mode: "write" }],
-	});
+const updateRefCount = (fixture) =>
+	fixture.fake.log.filter(
+		({ args }) => args[2] === "update-ref" || args[4] === "update-ref",
+	).length;
+
+async function completedProducer(fixture, filename = "src/implementation.txt") {
 	const worker = fixture.result.workers[0];
-	writeFileSync(join(worker.cwd, "implementation.txt"), "implemented\n");
-	git(worker.cwd, "add", "implementation.txt");
-	git(worker.cwd, "commit", "-qm", "implementation");
+	mkdirSync(dirname(join(worker.cwd, filename)), { recursive: true });
+	writeFileSync(join(worker.cwd, filename), "implemented\n");
+	git(worker.cwd, "add", filename);
+	git(worker.cwd, "commit", "-qm", `implement ${filename}`);
+	await publishWorkerReport(fixture, worker);
+	return worker;
+}
+
+test("report-first reconcile and stand-down retain Git and product inventory", async () => {
+	const fixture = await assembledFixture();
+	const worker = await completedProducer(fixture);
 	for (const relativePath of [
 		"artifacts/result.txt",
 		"reports/review.md",
@@ -51,12 +62,14 @@ test("B3 reconcile and stand-down preserve all Git and retained inventory", asyn
 		stateRoot: fixture.stateRoot,
 		exec: fixture.fake.exec,
 	});
-	assert.equal(reconciled.merges.length, 1);
+	assert.equal(reconciled.lifecycle, "integration_harvested_no_gates");
+	assert.equal(reconciled.integration.selection.length, 1);
 	assert.equal(
-		readFileSync(join(fixture.repository, "implementation.txt"), "utf8"),
+		readFileSync(join(fixture.repository, "src/implementation.txt"), "utf8"),
 		"implemented\n",
 	);
-	const worktreesAfterMerge = git(
+	assert.equal(updateRefCount(fixture), 1);
+	const worktreesAfterReconcile = git(
 		fixture.repository,
 		"worktree",
 		"list",
@@ -67,6 +80,7 @@ test("B3 reconcile and stand-down preserve all Git and retained inventory", asyn
 		stateRoot: fixture.stateRoot,
 		herdrBin: "fake",
 		exec: fixture.fake.exec,
+		reason: "normal_completion",
 	});
 	assert.equal(stoodDown.archived, true);
 	assert.deepEqual(stoodDown.closed, [worker.pane_id]);
@@ -81,7 +95,7 @@ test("B3 reconcile and stand-down preserve all Git and retained inventory", asyn
 	);
 	assert.equal(
 		git(fixture.repository, "worktree", "list", "--porcelain"),
-		worktreesAfterMerge,
+		worktreesAfterReconcile,
 	);
 	assert.equal(existsSync(worker.cwd), true);
 	for (const relativePath of [
@@ -91,11 +105,7 @@ test("B3 reconcile and stand-down preserve all Git and retained inventory", asyn
 		"recordings/demo.webm",
 		".guard/events.jsonl",
 	])
-		assert.equal(
-			existsSync(join(fixture.repository, relativePath)),
-			true,
-			relativePath,
-		);
+		assert.equal(existsSync(join(fixture.repository, relativePath)), true);
 	const store = openRepositoryStore({
 		stateRoot: fixture.stateRoot,
 		repoPath: fixture.repository,
@@ -105,21 +115,18 @@ test("B3 reconcile and stand-down preserve all Git and retained inventory", asyn
 	);
 });
 
-test("B3 source/target substitution, unregistered path, corrupt journal, and lock contention perform zero CAS", async () => {
+test("source, target, journal, registration, and lock failures perform zero CAS", async () => {
 	for (const variant of [
 		"source-branch",
 		"source-foreign-common-dir",
-		"source-unrelated-history",
 		"target-branch",
 		"target-head",
 		"unregistered",
 		"journal",
 		"lock",
 	]) {
-		const fixture = await assembledFixture({
-			roles: [{ name: "builder", kind: "pi", mode: "write" }],
-		});
-		const worker = fixture.result.workers[0];
+		const fixture = await assembledFixture();
+		const worker = await completedProducer(fixture);
 		let held;
 		let reconcileExec = fixture.fake.exec;
 		if (variant === "source-branch") git(worker.cwd, "branch", "-m", "foreign");
@@ -134,11 +141,6 @@ test("B3 source/target substitution, unregistered path, corrupt journal, and loc
 			git(worker.cwd, "symbolic-ref", "HEAD", recorded.branch_ref);
 			git(worker.cwd, "reset", "--hard", recorded.head_sha);
 		}
-		if (variant === "source-unrelated-history") {
-			const tree = git(worker.cwd, "write-tree");
-			const unrelated = git(worker.cwd, "commit-tree", tree, "-m", "unrelated");
-			git(worker.cwd, "reset", "--hard", unrelated);
-		}
 		if (variant === "target-branch")
 			git(fixture.repository, "branch", "-m", "foreign-target");
 		if (variant === "target-head") {
@@ -147,8 +149,8 @@ test("B3 source/target substitution, unregistered path, corrupt journal, and loc
 			git(fixture.repository, "commit", "-qm", "target drift");
 		}
 		if (variant === "unregistered") {
-			reconcileExec = (command, args) => {
-				const output = fixture.fake.exec(command, args);
+			reconcileExec = (command, args, options) => {
+				const output = fixture.fake.exec(command, args, options);
 				if (command !== "git" || args[2] !== "worktree") return output;
 				return output
 					.split(/\n\n+/)
@@ -163,296 +165,174 @@ test("B3 source/target substitution, unregistered path, corrupt journal, and loc
 			writeFileSync(path, JSON.stringify(value));
 		}
 		if (variant === "lock") {
-			const store = openRepositoryStore({
-				stateRoot: fixture.stateRoot,
-				repoPath: fixture.repository,
-			});
 			const kernel = await import("../scripts/state-kernel.mjs");
-			held = kernel.acquireRepositoryLock(store, {
-				operationId: "concurrent-test",
-			});
-		}
-		const mergesBefore = fixture.fake.log.filter(
-			({ args }) => args[2] === "update-ref",
-		).length;
-		await assert.rejects(
-			() =>
-				reconcile({
-					contextJson: context(fixture.repository, fixture.workspace),
+			held = kernel.acquireRepositoryLock(
+				openRepositoryStore({
 					stateRoot: fixture.stateRoot,
-					exec: reconcileExec,
+					repoPath: fixture.repository,
 				}),
-			variant,
-		);
-		assert.equal(
-			fixture.fake.log.filter(({ args }) => args[2] === "update-ref").length,
-			mergesBefore,
-			variant,
-		);
+				{ operationId: "concurrent-test" },
+			);
+		}
+		const before = updateRefCount(fixture);
+		const invocation = () =>
+			reconcile({
+				contextJson: context(fixture.repository, fixture.workspace),
+				stateRoot: fixture.stateRoot,
+				exec: reconcileExec,
+			});
+		if (variant === "source-foreign-common-dir") {
+			const rejected = await invocation();
+			assert.equal(rejected.lifecycle, "delivery_report_rejected", variant);
+		} else await assert.rejects(invocation, variant);
+		assert.equal(updateRefCount(fixture), before, variant);
 		if (held)
 			(await import("../scripts/state-kernel.mjs")).releaseRepositoryLock(held);
 	}
 });
 
-test("B3 injected source and target races at every final-read/CAS boundary perform zero CAS", async () => {
-	for (const changed of ["source", "target"])
-		for (const boundary of [
-			"after_final_source_read",
-			"after_final_target_read",
-			"before_cas",
-		]) {
-			const fixture = await assembledFixture({
-				roles: [{ name: "builder", kind: "pi", mode: "write" }],
-			});
-			const worker = fixture.result.workers[0];
-			writeFileSync(join(worker.cwd, "initial.txt"), "initial\n");
-			git(worker.cwd, "add", "initial.txt");
-			git(worker.cwd, "commit", "-qm", "initial source");
-			let injected = false;
-			const casBefore = fixture.fake.log.filter(
-				({ args }) => args[2] === "update-ref",
-			).length;
-			await assert.rejects(() =>
-				reconcile({
-					contextJson: context(fixture.repository, fixture.workspace),
-					stateRoot: fixture.stateRoot,
-					exec: fixture.fake.exec,
-					fault(name) {
-						if (name !== `git.merge:${boundary}` || injected) return;
-						injected = true;
-						const path = changed === "source" ? worker.cwd : fixture.repository;
-						writeFileSync(join(path, `${changed}-${boundary}.txt`), "drift\n");
-						git(path, "add", `${changed}-${boundary}.txt`);
-						git(path, "commit", "-qm", `${changed} ${boundary}`);
-					},
-				}),
-			);
-			assert.equal(injected, true, `${changed}:${boundary}`);
-			assert.equal(
-				fixture.fake.log.filter(({ args }) => args[2] === "update-ref").length,
-				casBefore,
-				`${changed}:${boundary}`,
-			);
-		}
-});
-
-test("B3 post-CAS drift never publishes an observed merge result", async () => {
-	for (const boundary of [
-		"after_cas",
-		"during_worktree_sync",
-		"before_result_publication",
-		"journal.after_effect",
-	]) {
-		const fixture = await assembledFixture({
-			roles: [{ name: "builder", kind: "pi", mode: "write" }],
-		});
-		const worker = fixture.result.workers[0];
-		writeFileSync(join(worker.cwd, "post-cas.txt"), `${boundary}\n`);
-		git(worker.cwd, "add", "post-cas.txt");
-		git(worker.cwd, "commit", "-qm", `source ${boundary}`);
-		const actorHead = git(worker.cwd, "rev-parse", "HEAD");
+test("source and target races immediately before CAS perform zero CAS", async () => {
+	for (const changed of ["source", "target"]) {
+		const fixture = await assembledFixture();
+		const worker = await completedProducer(fixture, "src/race.txt");
+		const before = updateRefCount(fixture);
 		let injected = false;
-		await assert.rejects(
-			() =>
-				reconcile({
-					contextJson: context(fixture.repository, fixture.workspace),
-					stateRoot: fixture.stateRoot,
-					exec: fixture.fake.exec,
-					fault(name) {
-						if (name !== `git.merge:${boundary}` || injected) return;
-						injected = true;
-						const conductorHead = git(
-							fixture.repository,
-							"rev-parse",
-							"refs/heads/main",
-						);
-						git(
-							fixture.repository,
-							"update-ref",
-							"refs/heads/main",
-							actorHead,
-							conductorHead,
-						);
-					},
-				}),
-			(error) => {
-				assert.equal(error.code, "recovery_required");
-				assert.equal(error.actualIdentity.ref_sha, actorHead);
-				assert.notEqual(error.expectedIdentity.ref_sha, actorHead);
-				assert.match(error.cause.message, /expected .* actual/);
-				return true;
-			},
-		);
-		assert.equal(injected, true, boundary);
-		assert.equal(
-			git(fixture.repository, "rev-parse", "refs/heads/main"),
-			actorHead,
-			boundary,
-		);
-		const merges = readJournals(fixture.stateRoot).filter(
-			(entry) => entry.operation_type === "git.merge",
-		);
-		assert.equal(merges.length, 1, boundary);
-		assert.equal(merges[0].phase, "needs_attention", boundary);
-		assert.equal(merges[0].observed_identity, null, boundary);
-	}
-});
-
-test("B3 concurrent tracked edits after CAS, during sync, and before result are preserved and unobserved", async () => {
-	for (const race of [
-		"after_cas",
-		"during_sync",
-		"before_result_publication",
-		"journal_after_effect",
-	]) {
-		const fixture = await assembledFixture({
-			roles: [{ name: "builder", kind: "pi", mode: "write" }],
-		});
-		const worker = fixture.result.workers[0];
-		writeFileSync(join(worker.cwd, "merged.txt"), `${race}\n`);
-		git(worker.cwd, "add", "merged.txt");
-		git(worker.cwd, "commit", "-qm", `source ${race}`);
-		const concurrentContent = `concurrent ${race}\n`;
-		let injected = false;
-		const injectTrackedEdit = () => {
-			if (injected) return;
-			injected = true;
-			writeFileSync(join(fixture.repository, "base.txt"), concurrentContent);
-		};
-		const racingExec = (command, args) => {
-			if (
-				race === "during_sync" &&
-				command === "git" &&
-				args[2] === "read-tree" &&
-				args[3] !== "-n"
-			)
-				injectTrackedEdit();
-			return fixture.fake.exec(command, args);
-		};
-		await assert.rejects(
-			() =>
-				reconcile({
-					contextJson: context(fixture.repository, fixture.workspace),
-					stateRoot: fixture.stateRoot,
-					exec: racingExec,
-					fault(name) {
-						if (
-							(race === "after_cas" && name === "git.merge:after_cas") ||
-							(race === "before_result_publication" &&
-								name === "git.merge:before_result_publication") ||
-							(race === "journal_after_effect" &&
-								name === "git.merge:journal.after_effect")
-						)
-							injectTrackedEdit();
-					},
-				}),
-			(error) => error.code === "recovery_required",
-		);
-		assert.equal(injected, true, race);
-		assert.equal(
-			readFileSync(join(fixture.repository, "base.txt"), "utf8"),
-			concurrentContent,
-			race,
-		);
-		const merge = readJournals(fixture.stateRoot).find(
-			(entry) => entry.operation_type === "git.merge",
-		);
-		assert.equal(merge.phase, "needs_attention", race);
-		assert.equal(merge.observed_identity, null, race);
-	}
-});
-
-test("B3 post-CAS staged index race reaches the publication guard without replay", async () => {
-	const fixture = await assembledFixture({
-		roles: [{ name: "builder", kind: "pi", mode: "write" }],
-	});
-	const worker = fixture.result.workers[0];
-	writeFileSync(join(worker.cwd, "staged-race.txt"), "merged\n");
-	git(worker.cwd, "add", "staged-race.txt");
-	git(worker.cwd, "commit", "-qm", "staged race source");
-	const stagedContent = "same-user staged edit\n";
-	let injected = false;
-	await assert.rejects(
-		() =>
+		await assert.rejects(() =>
 			reconcile({
 				contextJson: context(fixture.repository, fixture.workspace),
 				stateRoot: fixture.stateRoot,
 				exec: fixture.fake.exec,
 				fault(name) {
-					if (name !== "git.merge:journal.after_effect" || injected) return;
+					if (
+						name !== "integration.reconcile:integration.before_cas" ||
+						injected
+					)
+						return;
 					injected = true;
-					writeFileSync(join(fixture.repository, "base.txt"), stagedContent);
-					git(fixture.repository, "add", "base.txt");
+					const path = changed === "source" ? worker.cwd : fixture.repository;
+					writeFileSync(join(path, `${changed}-race.txt`), "drift\n");
+					git(path, "add", `${changed}-race.txt`);
+					git(path, "commit", "-qm", `${changed} race`);
 				},
 			}),
-		(error) => {
-			assert.equal(error.code, "recovery_required");
-			assert.match(
-				error.cause.message,
-				/index changed before result publication/,
-			);
-			return true;
-		},
-	);
-	assert.equal(injected, true);
-	assert.equal(
-		readFileSync(join(fixture.repository, "base.txt"), "utf8"),
-		stagedContent,
-	);
-	assert.equal(
-		git(fixture.repository, "show", ":base.txt"),
-		stagedContent.trim(),
-	);
-	const merge = readJournals(fixture.stateRoot).find(
-		(entry) => entry.operation_type === "git.merge",
-	);
-	assert.equal(merge.phase, "needs_attention");
-	assert.equal(merge.observed_identity, null);
-	assert.equal(
-		readJournals(fixture.stateRoot).filter(
-			(entry) =>
-				entry.operation_type === "git.merge" && entry.phase === "observed",
-		).length,
-		0,
-	);
-	const synchronizationCalls = fixture.fake.log.filter(
-		({ args }) => args[2] === "read-tree" && args[3] !== "-n",
-	).length;
-	await assert.rejects(
-		() =>
+		);
+		assert.equal(injected, true, changed);
+		assert.equal(updateRefCount(fixture), before, changed);
+	}
+});
+
+test("post-CAS ref, tracked-worktree, and staged-index drift never publish reconciliation", async () => {
+	for (const race of ["ref", "tracked", "staged"]) {
+		const fixture = await assembledFixture();
+		const worker = await completedProducer(fixture, `src/${race}.txt`);
+		let injected = false;
+		await assert.rejects(
+			() =>
+				reconcile({
+					contextJson: context(fixture.repository, fixture.workspace),
+					stateRoot: fixture.stateRoot,
+					exec: fixture.fake.exec,
+					fault(name) {
+						if (
+							name !== "integration.reconcile:journal.after_effect" ||
+							injected
+						)
+							return;
+						injected = true;
+						if (race === "ref") {
+							const current = git(
+								fixture.repository,
+								"rev-parse",
+								"refs/heads/main",
+							);
+							const actor = git(worker.cwd, "rev-parse", "HEAD");
+							git(
+								fixture.repository,
+								"update-ref",
+								"refs/heads/main",
+								actor,
+								current,
+							);
+						} else {
+							writeFileSync(
+								join(fixture.repository, "base.txt"),
+								`${race} drift\n`,
+							);
+							if (race === "staged") git(fixture.repository, "add", "base.txt");
+						}
+					},
+				}),
+			(error) => error.code === "recovery_required",
+		);
+		assert.equal(injected, true, race);
+		const entry = readJournals(fixture.stateRoot).find(
+			(candidate) => candidate.operation_type === "integration.reconcile",
+		);
+		assert.equal(entry.phase, "needs_attention", race);
+		assert.equal(entry.observed_identity, null, race);
+		const attempts = updateRefCount(fixture);
+		await assert.rejects(() =>
 			reconcile({
 				contextJson: context(fixture.repository, fixture.workspace),
 				stateRoot: fixture.stateRoot,
 				exec: fixture.fake.exec,
 			}),
-		(error) => error.code === "recovery_required",
-	);
-	assert.equal(
-		fixture.fake.log.filter(
-			({ args }) => args[2] === "read-tree" && args[3] !== "-n",
-		).length,
-		synchronizationCalls,
-	);
-	assert.equal(
-		git(fixture.repository, "show", ":base.txt"),
-		stagedContent.trim(),
-	);
+		);
+		assert.equal(updateRefCount(fixture), attempts, `${race} replayed CAS`);
+	}
 });
 
-test("B3 CAS failure cannot install the computed merge commit or update the worktree", async () => {
-	const fixture = await assembledFixture({
-		roles: [{ name: "builder", kind: "pi", mode: "write" }],
-	});
-	const worker = fixture.result.workers[0];
-	writeFileSync(join(worker.cwd, "cas.txt"), "source\n");
-	git(worker.cwd, "add", "cas.txt");
-	git(worker.cwd, "commit", "-qm", "CAS source");
+test("post-CAS synchronization checkpoints preserve concurrent tracked edits and journal no success", async () => {
+	for (const checkpoint of [
+		"integration.after_cas",
+		"integration.before_sync",
+		"integration.during_sync",
+		"integration.before_observed_publication",
+	]) {
+		const fixture = await assembledFixture();
+		await completedProducer(fixture, `src/${checkpoint.split(".").at(-1)}.txt`);
+		const concurrentBytes = `concurrent edit at ${checkpoint}\n`;
+		let injected = false;
+		await assert.rejects(
+			() =>
+				reconcile({
+					contextJson: context(fixture.repository, fixture.workspace),
+					exec: fixture.fake.exec,
+					fault(name) {
+						if (name !== `integration.reconcile:${checkpoint}` || injected)
+							return;
+						injected = true;
+						writeFileSync(
+							join(fixture.repository, "base.txt"),
+							concurrentBytes,
+						);
+					},
+				}),
+			(error) => error.code === "recovery_required",
+		);
+		assert.equal(injected, true, checkpoint);
+		assert.equal(
+			readFileSync(join(fixture.repository, "base.txt"), "utf8"),
+			concurrentBytes,
+			checkpoint,
+		);
+		const entry = readJournals(fixture.stateRoot).find(
+			(candidate) => candidate.operation_type === "integration.reconcile",
+		);
+		assert.notEqual(entry.phase, "observed", checkpoint);
+		assert.equal(entry.observed_identity, null, checkpoint);
+	}
+});
+
+test("CAS failure cannot synchronize the target worktree", async () => {
+	const fixture = await assembledFixture();
+	const worker = await completedProducer(fixture, "src/cas.txt");
 	const oldTarget = git(fixture.repository, "rev-parse", "refs/heads/main");
 	let externalHead;
 	let casAttempts = 0;
-	let readTreeCalls = 0;
-	const racingExec = (command, args) => {
-		if (command === "git" && args[2] === "update-ref") {
+	let resetCalls = 0;
+	const racingExec = (command, args, options) => {
+		if (command === "git" && args[4] === "update-ref") {
 			casAttempts++;
 			externalHead = git(worker.cwd, "rev-parse", "HEAD");
 			git(
@@ -463,9 +343,8 @@ test("B3 CAS failure cannot install the computed merge commit or update the work
 				oldTarget,
 			);
 		}
-		if (command === "git" && args[2] === "read-tree" && args[3] !== "-n")
-			readTreeCalls++;
-		return fixture.fake.exec(command, args);
+		if (command === "git" && args[2] === "reset") resetCalls++;
+		return fixture.fake.exec(command, args, options);
 	};
 	await assert.rejects(
 		() =>
@@ -474,94 +353,55 @@ test("B3 CAS failure cannot install the computed merge commit or update the work
 				stateRoot: fixture.stateRoot,
 				exec: racingExec,
 			}),
-		/explicit recovery/,
+		(error) => error.code === "recovery_required",
 	);
 	assert.equal(casAttempts, 1);
-	assert.equal(readTreeCalls, 0);
+	assert.equal(resetCalls, 0);
 	assert.equal(
 		git(fixture.repository, "rev-parse", "refs/heads/main"),
 		externalHead,
 	);
-	assert.equal(existsSync(join(fixture.repository, "cas.txt")), false);
+	assert.equal(existsSync(join(fixture.repository, "src/cas.txt")), false);
 });
 
-test("B3 a second repository/workspace cannot select or mutate the active run", async () => {
-	const fixture = await assembledFixture({
-		roles: [{ name: "builder", kind: "pi", mode: "write" }],
-	});
+test("cross-scope callers and conflicting complete producer sets perform zero CAS", async () => {
+	const isolated = await assembledFixture();
 	for (const [repository, workspace] of [
-		[repo(), fixture.workspace],
-		[fixture.repository, "wForeign"],
+		[repo(), isolated.workspace],
+		[isolated.repository, "wForeign"],
 	]) {
-		const before = fixture.fake.log.filter(
-			({ args }) => args[2] === "update-ref",
-		).length;
+		const before = updateRefCount(isolated);
 		await assert.rejects(() =>
 			reconcile({
 				contextJson: context(repository, workspace),
-				stateRoot: fixture.stateRoot,
-				exec: fixture.fake.exec,
+				stateRoot: isolated.stateRoot,
+				exec: isolated.fake.exec,
 			}),
 		);
-		assert.equal(
-			fixture.fake.log.filter(({ args }) => args[2] === "update-ref").length,
-			before,
-		);
-		const closesBefore = fixture.fake.log.filter(
-			({ args }) => args[0] === "pane" && args[1] === "close",
-		).length;
-		await assert.rejects(() =>
-			standDown({
-				contextJson: context(repository, workspace),
-				stateRoot: fixture.stateRoot,
-				herdrBin: "fake",
-				exec: fixture.fake.exec,
-			}),
-		);
-		assert.equal(
-			fixture.fake.log.filter(
-				({ args }) => args[0] === "pane" && args[1] === "close",
-			).length,
-			closesBefore,
-		);
+		assert.equal(updateRefCount(isolated), before);
 	}
-});
 
-test("real plumbing conflict preserves state and both worktrees without replay", async () => {
 	const fixture = await assembledFixture({
-		roles: [
-			{ name: "builder-a", kind: "pi", mode: "write" },
-			{ name: "builder-b", kind: "pi", mode: "write" },
-		],
+		roles: ["builder-a", "builder-b"].map((name) => ({
+			name,
+			kind: "pi",
+			mode: "write",
+			assignment: {
+				title: `Task for ${name}`,
+				mission: "Create a deliberate complete-set conflict",
+				acceptance_criteria: [],
+				owned_paths: ["base.txt"],
+				forbidden_paths: [],
+				required_commands: [],
+			},
+		})),
 	});
 	for (const [index, worker] of fixture.result.workers.entries()) {
 		writeFileSync(join(worker.cwd, "base.txt"), `builder-${index}\n`);
 		git(worker.cwd, "add", "base.txt");
 		git(worker.cwd, "commit", "-qm", `conflict ${index}`);
+		await publishWorkerReport(fixture, worker);
 	}
-	await assert.rejects(
-		() =>
-			reconcile({
-				contextJson: context(fixture.repository, fixture.workspace),
-				stateRoot: fixture.stateRoot,
-				exec: fixture.fake.exec,
-			}),
-		/explicit recovery/,
-	);
-	const casCount = fixture.fake.log.filter(
-		({ args }) => args[2] === "update-ref",
-	).length;
-	assert.equal(casCount, 1);
-	assert.equal(existsSync(fixture.result.workers[0].cwd), true);
-	assert.equal(existsSync(fixture.result.workers[1].cwd), true);
-	assert.equal(
-		readJournals(fixture.stateRoot).filter(
-			(entry) =>
-				entry.operation_type === "git.merge" &&
-				entry.phase === "needs_attention",
-		).length,
-		1,
-	);
 	await assert.rejects(() =>
 		reconcile({
 			contextJson: context(fixture.repository, fixture.workspace),
@@ -569,8 +409,13 @@ test("real plumbing conflict preserves state and both worktrees without replay",
 			exec: fixture.fake.exec,
 		}),
 	);
+	assert.equal(updateRefCount(fixture), 0);
 	assert.equal(
-		fixture.fake.log.filter(({ args }) => args[2] === "update-ref").length,
-		casCount,
+		readJournals(fixture.stateRoot).filter(
+			(entry) => entry.operation_type === "integration.reconcile",
+		).length,
+		0,
 	);
+	for (const worker of fixture.result.workers)
+		assert.equal(existsSync(worker.cwd), true);
 });

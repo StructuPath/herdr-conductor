@@ -2,3 +2,5 @@ node_modules/
 .DS_Store
 *.log
 .a5c/
+__pycache__/
+*.pyc

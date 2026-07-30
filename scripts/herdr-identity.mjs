@@ -300,6 +300,24 @@ export function readHerdrIdentity(active, recorded, exec, herdrBin) {
 	};
 }
 
+export function livePaneCreationIdentity(active, recorded, exec, herdrBin) {
+	const pane = paneFrom(
+		herdrJson(exec, herdrBin, ["pane", "get", recorded.pane_id]),
+	);
+	const identity = paneCreationIdentity(
+		pane,
+		active,
+		recorded.generation,
+		recorded.cwd,
+	);
+	if (canonicalJson(identity) !== canonicalJson(recorded))
+		fail(
+			"foreign_or_stale",
+			"live pane identity does not match canonical pane creation authority",
+		);
+	return identity;
+}
+
 export function liveCloseIdentity(active, recorded, exec, herdrBin) {
 	return readHerdrIdentity(active, recorded, exec, herdrBin).identity;
 }
