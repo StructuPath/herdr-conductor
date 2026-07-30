@@ -283,8 +283,8 @@ export function pluginRestorationArguments(prior) {
 		return Object.freeze([
 			"plugin",
 			"link",
-			prior.enabled ? "--enabled" : "--disabled",
 			prior.plugin_root,
+			prior.enabled ? "--enabled" : "--disabled",
 		]);
 	throw Object.assign(
 		new Error("prior plugin state is not exactly restorable"),
@@ -968,7 +968,7 @@ export async function runLiveStage2Evidence({
 			{ protocol: 17, schema: 1 },
 		);
 		priorPluginState = currentPluginState();
-		command("herdr", ["plugin", "link", "--enabled", pluginCheckout]);
+		command("herdr", ["plugin", "link", pluginCheckout, "--enabled"]);
 		pluginMutated = true;
 		const linkedPluginState = currentPluginState();
 		assert.deepEqual(

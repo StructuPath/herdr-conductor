@@ -295,8 +295,8 @@ test("external Herdr observations distinguish restorable plugin and workspace st
 			[
 				"plugin",
 				"link",
-				enabled ? "--enabled" : "--disabled",
 				realpathSync(local),
+				enabled ? "--enabled" : "--disabled",
 			],
 		);
 	for (const enabled of [true, false])
