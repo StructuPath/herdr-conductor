@@ -221,14 +221,11 @@ export function observedPluginState(payload) {
 			code: "capability_unavailable",
 		});
 	const plugin = matches[0];
-	const pluginKeys = Object.keys(plugin).sort();
 	const sourceKeys =
 		plugin.source && typeof plugin.source === "object"
 			? Object.keys(plugin.source).sort()
 			: [];
 	if (
-		canonicalJson(pluginKeys) !==
-			canonicalJson(["enabled", "plugin_id", "plugin_root", "source"]) ||
 		canonicalJson(sourceKeys) !== canonicalJson(["kind"]) ||
 		plugin.source.kind !== "local" ||
 		typeof plugin.plugin_root !== "string" ||
@@ -255,6 +252,7 @@ export function observedPluginState(payload) {
 		plugin_root: pluginRoot,
 		enabled: plugin.enabled,
 		source: Object.freeze({ kind: "local" }),
+		record_sha256: sha256(canonicalJson(plugin)),
 	});
 }
 
@@ -273,12 +271,14 @@ export function pluginRestorationArguments(prior) {
 				"plugin_id",
 				"plugin_root",
 				"presence",
+				"record_sha256",
 				"source",
 			]) &&
 		prior.plugin_id === PLUGIN_ID &&
 		canonicalJson(prior.source) === canonicalJson({ kind: "local" }) &&
 		typeof prior.plugin_root === "string" &&
-		typeof prior.enabled === "boolean"
+		typeof prior.enabled === "boolean" &&
+		/^[a-f0-9]{64}$/.test(prior.record_sha256)
 	)
 		return Object.freeze([
 			"plugin",

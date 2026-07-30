@@ -263,28 +263,25 @@ test("external Herdr observations distinguish restorable plugin and workspace st
 		"unlink",
 		"structupath.conductor",
 	]);
-	for (const enabled of [true, false])
-		assert.deepEqual(
-			observedPluginState({
-				result: {
-					plugins: [
-						{
-							plugin_id: "structupath.conductor",
-							enabled,
-							plugin_root: realpathSync(local),
-							source: { kind: "local" },
-						},
-					],
-				},
-			}),
-			{
-				presence: "local",
-				plugin_id: "structupath.conductor",
-				plugin_root: realpathSync(local),
-				enabled,
-				source: { kind: "local" },
-			},
-		);
+	for (const enabled of [true, false]) {
+		const plugin = {
+			plugin_id: "structupath.conductor",
+			enabled,
+			plugin_root: realpathSync(local),
+			source: { kind: "local" },
+			version: "0.3.0",
+			name: "Conductor",
+			actions: [],
+		};
+		assert.deepEqual(observedPluginState({ result: { plugins: [plugin] } }), {
+			presence: "local",
+			plugin_id: "structupath.conductor",
+			plugin_root: realpathSync(local),
+			enabled,
+			source: { kind: "local" },
+			record_sha256: hash(canonicalJson(plugin)),
+		});
+	}
 	for (const enabled of [true, false])
 		assert.deepEqual(
 			pluginRestorationArguments({
@@ -293,6 +290,7 @@ test("external Herdr observations distinguish restorable plugin and workspace st
 				plugin_root: realpathSync(local),
 				enabled,
 				source: { kind: "local" },
+				record_sha256: "1".repeat(64),
 			}),
 			[
 				"plugin",
