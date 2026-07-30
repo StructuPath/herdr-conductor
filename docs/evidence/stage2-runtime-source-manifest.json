@@ -1,0 +1,355 @@
+{
+  "candidate_sha": "0ed952992ef1559808da4d25a2e7166d075b1ce9",
+  "document_type": "herdr-conductor-stage2-runtime-source-manifest",
+  "entry_count": 86,
+  "files": [
+    {
+      "path": ".gitignore",
+      "sha256": "ed162a77c2404239ead2a176b65b409669be7c97a8a9129ccbdbbf335ba302e8"
+    },
+    {
+      "path": "package.json",
+      "sha256": "03de1883d26604c498673700926b83ba0e7824291de57a6afcad2b6e8e9ec47e"
+    },
+    {
+      "path": "herdr-plugin.toml",
+      "sha256": "95958ade511f422b65a07f3d4a305581cdb236e1cd616da7d6c57aa0660aa35e"
+    },
+    {
+      "path": "README.md",
+      "sha256": "78066672cf16ca08863674bf34c7416a1bde5f52d991960cbb3f110a31c90739"
+    },
+    {
+      "path": "SECURITY.md",
+      "sha256": "504141317c1f911f906063228c4538e1ca255e0e8bdff5271bf089316a25ad7a"
+    },
+    {
+      "path": "CONTRIBUTING.md",
+      "sha256": "247f2468882ed9efd5ea5cca6d012a13be7261340373e33754ce5b1f0a3b15a5"
+    },
+    {
+      "path": "docs/private-state-v1.md",
+      "sha256": "068f1e633ca2686a28df62f45f4a1160eab243c65ee6610bc3b138d4e6204ae8"
+    },
+    {
+      "path": "docs/herdr-plugins-cheatsheet.md",
+      "sha256": "d517062dbd803d02deec35c2a1a1b228af76feaaf93d91a3f12bb6cac0273a5d"
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "sha256": "4e0daaba3236a15432e6cd0e318f3a53f12fe6d3bb77b34357124043971de175"
+    },
+    {
+      "path": "bin/renderer.mjs",
+      "sha256": "378798a5ca1fb9afdbb3d79061f40c29dccb9635c9605cd4801bdb106f9e47dc"
+    },
+    {
+      "path": "roles/builder-engine.md",
+      "sha256": "4ca0e563636aa31875e8ae7efde9bb29d7c2f20f4f86e0e3a6da3842e23eae03"
+    },
+    {
+      "path": "roles/builder-ui.md",
+      "sha256": "cf1dd4b2c96d6cd39eda444ac55c4ee3bac7359c02876f00355e6c8348aed1e6"
+    },
+    {
+      "path": "roles/test-author.md",
+      "sha256": "31d541a72dafb5ebf4ec7a2b8da4dca7564e6dadc5ca90a498d9745af3daed65"
+    },
+    {
+      "path": "roles/reviewer.md",
+      "sha256": "e8bb1d9b41f79617e99a68284b578d5b99c2ae11d0d6bd4379784ce110fc25d5"
+    },
+    {
+      "path": "roles/validator.md",
+      "sha256": "61c666e6fac4188c6fd4337c98c7a83f917f6b5f6836fcba5e9eb1a75b323791"
+    },
+    {
+      "path": "scripts/assemble.sh",
+      "sha256": "6443463b03293d6d0bef88c3370cdbe3801d4a9a25de999b222881e17e39ccd4"
+    },
+    {
+      "path": "scripts/board-pane.sh",
+      "sha256": "aefb63467a6395a6ffe36f65f01e495c3f73570c324c1bdfa88bf0632621665f"
+    },
+    {
+      "path": "scripts/board.sh",
+      "sha256": "91203ca2c130008100ed62b361e3fc03e3655c315128eb7f5248e8936aca80e8"
+    },
+    {
+      "path": "scripts/harvest.sh",
+      "sha256": "1523c93224326fcf27b72c4e242a067fadc1e4cfbf73d99b6ff9cf7f5b9515f0"
+    },
+    {
+      "path": "scripts/stand-down.sh",
+      "sha256": "2636d8c10e8f285296fb9cd21c2cabb4069f60e6cbf788410545aa4e647db716"
+    },
+    {
+      "path": "scripts/status.sh",
+      "sha256": "53aaeadfc603c9cbfe74f792b03b4a357e3cd78218f923707a8b200caf20fbd0"
+    },
+    {
+      "path": "scripts/check-docs.mjs",
+      "sha256": "75f00b46052b61115dece3637b5d738a03feea1ec51e500bdb4e05e853f1a4fe"
+    },
+    {
+      "path": "scripts/check-evidence-inventory.mjs",
+      "sha256": "095c554e049c3caa0017b2bfd6423ae9dfbc39356a64acef2b7af094baebcce0"
+    },
+    {
+      "path": "scripts/check-manifest.mjs",
+      "sha256": "adeaaa02cfd0440a71f7e312b1bebc847afe0bcafbd07adc7715f172bd2edc39"
+    },
+    {
+      "path": "scripts/check-stage1-live-smoke-evidence.mjs",
+      "sha256": "5174e58b1ad024d947ebd8081a292e55e189f4f3b84804af2f579f0ff2f92058"
+    },
+    {
+      "path": "scripts/check-stage2-live-evidence.mjs",
+      "sha256": "8e545b40886740168091463e3b31f28f5b5d912e53d555e3e8e6fe21e4d3bf6e"
+    },
+    {
+      "path": "scripts/finalize-stage2-live-evidence.mjs",
+      "sha256": "4940336105460078e4843c7b80cbc7f8ad1215019df28bd383f381c95fbfc559"
+    },
+    {
+      "path": "scripts/gate-source.mjs",
+      "sha256": "139786d917d855e1f947a6de5bdf36c6cd3d0092abe1135a583a4568b062b39b"
+    },
+    {
+      "path": "scripts/git-reconcile.mjs",
+      "sha256": "5d3447df48c889b1b532e1d6d7f937e6ae00524019e4a643d26e77c79074cbc9"
+    },
+    {
+      "path": "scripts/harness-fs-helper.py",
+      "sha256": "e46264adb24fd49bd3284fe738166026e78138bbe27790c6f8724b96d2e561ac"
+    },
+    {
+      "path": "scripts/harness-teardown.mjs",
+      "sha256": "e0d188ea619b1b4964d11c1d5e3b2cbf592a71918c6346ac5fb777e4f8193b37"
+    },
+    {
+      "path": "scripts/herdr-identity.mjs",
+      "sha256": "a5eceafed59e8bd326103b97e12149eeb83c4e8ecfecd1884ef6421dd094e195"
+    },
+    {
+      "path": "scripts/operation-journal.mjs",
+      "sha256": "e031cff849f608682393c17fe7fe4e2b52de85c4dbdf17c1f36e58f53e49c61a"
+    },
+    {
+      "path": "scripts/operation-policy.mjs",
+      "sha256": "d0c5d6e2f92990321487692431631d1fbb35880e0df174a1c7df6026d466627e"
+    },
+    {
+      "path": "scripts/private-state-schema.mjs",
+      "sha256": "4d74e6164695062f29799feb38ebecd8f8ccb5f4d8f4f81a0c0c61828aaa2e36"
+    },
+    {
+      "path": "scripts/report-harvest.mjs",
+      "sha256": "ec3f2659009e7fb9e963104ad02471cf6e476594306016bcdb8dd5968341ea31"
+    },
+    {
+      "path": "scripts/report-publisher.mjs",
+      "sha256": "7819f4258a8b11c274e1c6211b9a030c9f288cea56fa2bbfe083af0a8aaf6192"
+    },
+    {
+      "path": "scripts/run-stage1-live-smoke.mjs",
+      "sha256": "5f668c5e43d4be23793041945b24fff35e4880681f570fdbabb8a57f68f16e31"
+    },
+    {
+      "path": "scripts/run-stage2-live-evidence.mjs",
+      "sha256": "5087cf9a206ba4f6af209e6b39aab68beba094b8fb592943f9bd2249df46a4ec"
+    },
+    {
+      "path": "scripts/source-policy.mjs",
+      "sha256": "2ec98c58a3112d47ee370a8fc10a012e98fcf4f095f633fee5a9a0867cce6654"
+    },
+    {
+      "path": "scripts/stage1-evidence-contract.mjs",
+      "sha256": "100894ad017e81069883608c0a468cb347fed34bc4d589fc5e42f4e86d41d9b5"
+    },
+    {
+      "path": "scripts/stage1-runtime.mjs",
+      "sha256": "067528d9df9bf81f46687aefc7812fb8082500d1b19244b99efaca833364df05"
+    },
+    {
+      "path": "scripts/stage2-checkpoint-catalog.mjs",
+      "sha256": "a5ca73bcce4f233d356272474150f93a663d2922da2bb5ed9fc6be9a545f7aaf"
+    },
+    {
+      "path": "scripts/stage2-evidence-contract.mjs",
+      "sha256": "87d8eb1430eb58e3d95a2d3e30466a7894b1b3a01cf783833466fd01e0b4bf79"
+    },
+    {
+      "path": "scripts/stage2-lifecycle.mjs",
+      "sha256": "86c16e63922b53071779bb4414d5ed612b6c5719e58c4b2056d00c435ca7bed8"
+    },
+    {
+      "path": "scripts/state-internal.mjs",
+      "sha256": "60cb1dc3e624c12ee35f412f4f84a001f2a9126e724a8ffcea5aa454dcbaba27"
+    },
+    {
+      "path": "scripts/state-kernel.mjs",
+      "sha256": "f29535897b812006ea974182ef9c0d2bf9a78d44adec13f32b1e216b336a1556"
+    },
+    {
+      "path": "scripts/state-root.mjs",
+      "sha256": "e909ff8f4244b24e93bfcef7cb6ad513a3739245e591e7a74bf4f75f2465c9d9"
+    },
+    {
+      "path": "scripts/task-authority.mjs",
+      "sha256": "51b5e94aa4cd31e00cd61f973c8a0bac2f0cc6500c050f3d5bd744e67589e46b"
+    },
+    {
+      "path": "scripts/task-report-schema.mjs",
+      "sha256": "4a62703631c30df7b8e32e527a9dbf376227c7d0db2d399db1ed9ded318e4e26"
+    },
+    {
+      "path": "tests/board.test.mjs",
+      "sha256": "b94ba352f990a4b1bbe747a07836c9d7345186f06ae099ca8a8379871019904c"
+    },
+    {
+      "path": "tests/docs.test.mjs",
+      "sha256": "27a249b4662c421362c3ad341261e48cab70dda5e7ed402fcbd466b418a202a8"
+    },
+    {
+      "path": "tests/evidence-gates.test.mjs",
+      "sha256": "e5ef0b23c1290792ab5cc9ed5c579fe5cc62181920d546a94651a39d2b770a11"
+    },
+    {
+      "path": "tests/harness-teardown.test.mjs",
+      "sha256": "c46184fde1d87c56b171c87054029ae1e57fc3371f88bbe747615bb2ed59133d"
+    },
+    {
+      "path": "tests/manifest.test.mjs",
+      "sha256": "ca3aa3cc63098c80a76db0de4e78c580f0b1327bc6570e79bb7437ad4e962271"
+    },
+    {
+      "path": "tests/private-state-schema.test.mjs",
+      "sha256": "2ee093a5e97c25d608a6f2157ceb2ffbe93346bcbcd8e245a45a8e86f155a86e"
+    },
+    {
+      "path": "tests/report-publisher.test.mjs",
+      "sha256": "df006dca079a7572291f5f799421dd4b5f41942fb05dcc2be6c5de62f37863dc"
+    },
+    {
+      "path": "tests/stage1-live-smoke-harness.test.mjs",
+      "sha256": "e858e3279ac07522d46045e40ef7dd0fb6cde19cd75b9186e217f916f0f48b40"
+    },
+    {
+      "path": "tests/stage1-runtime-assemble.test.mjs",
+      "sha256": "799bc41b912acefb3dd08c9f45a66a7b29f48d60a75880e9f4dbafb97f737cde"
+    },
+    {
+      "path": "tests/stage1-runtime-crash-boundary.test.mjs",
+      "sha256": "487865537f6d99c2f6f0e3d0f942184c2fec47e42b9de249d9972a3d703cf6b7"
+    },
+    {
+      "path": "tests/stage1-runtime-helpers.mjs",
+      "sha256": "490f94a4ba98c927868f76c48952c202d451e44bd3a336dbb1489b819972d868"
+    },
+    {
+      "path": "tests/stage1-runtime-reconcile.test.mjs",
+      "sha256": "1e9f6f8887259ef8885327721434ab661eb5841c2d543629632968baf83c7d78"
+    },
+    {
+      "path": "tests/stage1-runtime-stand-down-archive.test.mjs",
+      "sha256": "cc00bbaab7e040d0d13e17839c0b23a3dcdab3b0665114983fc0e0ea0e187cdb"
+    },
+    {
+      "path": "tests/stage2-actions.test.mjs",
+      "sha256": "7cda27288b3c2d867c3bae727265745a431470922e92dc0ce2ff0f1304e0efef"
+    },
+    {
+      "path": "tests/stage2-concurrency.test.mjs",
+      "sha256": "8d3eed88aedbfe525d2d4237dfb65dace5169ef8dcc600d292f50403f515a363"
+    },
+    {
+      "path": "tests/stage2-crash-boundary.test.mjs",
+      "sha256": "138b68b7558b7c8d5e2fb6c2b2fab0373665fc4464189b2c29789ab639f701e7"
+    },
+    {
+      "path": "tests/stage2-effect-isolation.test.mjs",
+      "sha256": "c4f8ee1cf9e0c65d0e92fc207bbdf85183c17bef418d6f9882f418536881cba8"
+    },
+    {
+      "path": "tests/stage2-error-mapping.test.mjs",
+      "sha256": "77087d9a9266928da3ce18dd17af962450e4f0bed70e0e850da980788d3dbb12"
+    },
+    {
+      "path": "tests/stage2-filesystem.test.mjs",
+      "sha256": "e7e217be9c070d1ac0c1689d50daea5cb30690e29e20a14dde46b65062384d99"
+    },
+    {
+      "path": "tests/stage2-isolation-replay.test.mjs",
+      "sha256": "0e3b20231b6fd55c48163a5bc873b0be81dc8747cd76078f15403c950e060fae"
+    },
+    {
+      "path": "tests/stage2-lifecycle.test.mjs",
+      "sha256": "7c99d8561611173d96c9455756ace24356e56a4e0529209793e66e83472f8148"
+    },
+    {
+      "path": "tests/stage2-live-evidence.test.mjs",
+      "sha256": "f594528be4840a6ddca0ab285360e4b58241b0b3a5e2414d0c690b2d555ff273"
+    },
+    {
+      "path": "tests/stage2-reconcile-determinism.test.mjs",
+      "sha256": "c5e834ac673151c40c80ef78836d5dbdb676207e5691808e02723be6eb230f6e"
+    },
+    {
+      "path": "tests/stage2-report-harvest.test.mjs",
+      "sha256": "674fac66e179054b3d7244d178891eec2911ac87576d0b8cc9f66d169d212cbd"
+    },
+    {
+      "path": "tests/stage2-runtime-helpers.mjs",
+      "sha256": "ef926712215ac6888415d6df6c5b40ce75615ceef2fd78eea048269d8926d0d1"
+    },
+    {
+      "path": "tests/stage2-source-policy.test.mjs",
+      "sha256": "e023b6bf38bafa938bc53e773f618ecabd710432934321834da9dbf73a93e076"
+    },
+    {
+      "path": "tests/state-kernel.test.mjs",
+      "sha256": "3cc0b98b24eab4efd25c517a383884b24f5ee6b5c2f63f6d29ab72275760b610"
+    },
+    {
+      "path": "tests/task-report-schema.test.mjs",
+      "sha256": "74a7c213cc46cba68a8c76e7418e630e5ca27120fb50630b0084b3970c48d319"
+    },
+    {
+      "path": "tests/fixtures/b3-crash-child.mjs",
+      "sha256": "1e559d6b24937e8b902f720791570901b7142500465831d25ce3e906f125d21a"
+    },
+    {
+      "path": "tests/fixtures/evidence-publication-child.mjs",
+      "sha256": "c64e6969200df94e4e92ba8b5a34dd0366990251de08a3985305e1a3eb561e2d"
+    },
+    {
+      "path": "tests/fixtures/fake-herdr.mjs",
+      "sha256": "f4702eacb5142a2673db99e8d3d15ba2ad7c79b18cbf3e7c5096aed8f9479ec0"
+    },
+    {
+      "path": "tests/fixtures/harness-preteardown-failure-child.mjs",
+      "sha256": "771c5929c17656e0f41e92b4f3db0f9bf618adf119669d5bf6b9421424d1e7f7"
+    },
+    {
+      "path": "tests/fixtures/harness-teardown-child.mjs",
+      "sha256": "f44dbe13dc0aa6ec76dbd6c9599dddd8797ca79e08725e75049360d868b4ac8a"
+    },
+    {
+      "path": "tests/fixtures/stage1-crash-child.mjs",
+      "sha256": "96ca7170e0d9895291780b020277a3e435e730670e0c7b7824c60c6ea58c4d0c"
+    },
+    {
+      "path": "tests/fixtures/stage2-crash-child.mjs",
+      "sha256": "9dfd30286af8963e894842f2f6ac5dd91693bd48dddea773a2ed535f9f2d8875"
+    },
+    {
+      "path": "tests/fixtures/state-lock-child.mjs",
+      "sha256": "225aad98d09353f090c6f348efe2fa459510237c11e59693562db2cf79397983"
+    }
+  ],
+  "schema_version": 1,
+  "source_definition_id": "herdr-conductor-stage2-runtime-sources",
+  "source_definition_sha256": "7e8a822ea2f38dc59e57d9e7ca2b26130de081db8f7122e384561458b8123551",
+  "source_definition_version": 1
+}
