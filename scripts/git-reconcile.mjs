@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { execFileSync } from "node:child_process";
 import { realpathSync, statSync } from "node:fs";
 import {
 	StateKernelError,
@@ -370,6 +371,212 @@ export function validateMergeResultPublication({ active, result, exec }) {
 			"foreign_or_stale",
 			"integration target worktree is not clean before result publication",
 		);
+}
+
+export function buildOrderedProducerSelection(producers) {
+	if (!Array.isArray(producers))
+		fail("bookkeeping_unknown", "producer selection must be an array");
+	const selection = producers.map((producer) => {
+		const value = {
+			role_name: producer.role_name,
+			task_digest: producer.task_digest,
+			report_digest: producer.report_digest,
+			source_sha: producer.source_sha,
+			tree_sha: producer.tree_sha,
+			source_generation: producer.source_generation,
+		};
+		if (
+			typeof value.role_name !== "string" ||
+			![value.task_digest, value.report_digest].every((entry) =>
+				/^[a-f0-9]{64}$/.test(entry),
+			) ||
+			![value.source_sha, value.tree_sha].every((entry) =>
+				/^[a-f0-9]{40}$/.test(entry),
+			) ||
+			!/^[a-f0-9]{32}$/.test(value.source_generation)
+		)
+			fail("bookkeeping_unknown", "producer selection entry is invalid");
+		return Object.freeze(value);
+	});
+	selection.sort((left, right) =>
+		Buffer.compare(Buffer.from(left.role_name), Buffer.from(right.role_name)),
+	);
+	if (
+		new Set(selection.map(({ role_name }) => role_name)).size !==
+		selection.length
+	)
+		fail("bookkeeping_unknown", "producer selection contains duplicate roles");
+	return Object.freeze(selection);
+}
+
+function deterministicGit(repository, args, options = {}) {
+	try {
+		return (options.execFile ?? execFileSync)(
+			"git",
+			["-C", repository, "-c", "commit.gpgSign=false", ...args],
+			{
+				encoding: "utf8",
+				stdio:
+					options.input === undefined
+						? ["ignore", "pipe", "pipe"]
+						: ["pipe", "pipe", "pipe"],
+				input: options.input,
+				env: {
+					...process.env,
+					LC_ALL: "C",
+					LANG: "C",
+					TZ: "UTC",
+					GIT_AUTHOR_NAME: "Herdr Conductor",
+					GIT_AUTHOR_EMAIL: "conductor@local.invalid",
+					GIT_AUTHOR_DATE: "2000-01-01T00:00:00+00:00",
+					GIT_COMMITTER_NAME: "Herdr Conductor",
+					GIT_COMMITTER_EMAIL: "conductor@local.invalid",
+					GIT_COMMITTER_DATE: "2000-01-01T00:00:00+00:00",
+				},
+			},
+		).trim();
+	} catch (error) {
+		fail(
+			"source_policy_violation",
+			`deterministic Git ${args[0]} failed`,
+			error,
+		);
+	}
+}
+
+export function planCompleteIntegration({
+	repository,
+	targetSha,
+	producers,
+	execFile,
+} = {}) {
+	validateGitObjectId(targetSha, "integration target SHA");
+	const selection = buildOrderedProducerSelection(producers ?? []);
+	let virtualTarget = targetSha;
+	const commits = [];
+	for (const producer of selection) {
+		const tree = deterministicGit(
+			repository,
+			["merge-tree", "--write-tree", virtualTarget, producer.source_sha],
+			{ execFile },
+		);
+		validateGitObjectId(tree, "integration tree");
+		const message = `Conductor Stage 2 integrate ${producer.role_name} ${producer.source_sha}\n`;
+		const commit = deterministicGit(
+			repository,
+			[
+				"commit-tree",
+				tree,
+				"-p",
+				virtualTarget,
+				"-p",
+				producer.source_sha,
+				"-F",
+				"-",
+			],
+			{ execFile, input: message },
+		);
+		validateGitObjectId(commit, "integration commit");
+		commits.push(
+			Object.freeze({
+				role_name: producer.role_name,
+				tree_sha: tree,
+				commit_sha: commit,
+				parents: Object.freeze([virtualTarget, producer.source_sha]),
+				message,
+			}),
+		);
+		virtualTarget = commit;
+	}
+	return Object.freeze({
+		selection,
+		startingTargetSha: targetSha,
+		finalSha: virtualTarget,
+		commits: Object.freeze(commits),
+		casRequired: selection.length > 0,
+	});
+}
+
+export function publishIntegrationCas({
+	repository,
+	targetRef,
+	expectedTargetSha,
+	plan,
+	preflight,
+	execFile,
+	fault,
+} = {}) {
+	if (!plan || plan.startingTargetSha !== expectedTargetSha)
+		fail("stale_source", "integration plan does not bind the expected target");
+	if (typeof preflight !== "function")
+		fail("bookkeeping_unknown", "complete integration preflight is required");
+	const before = preflight();
+	if (canonicalJson(before) !== canonicalJson(preflight()))
+		fail(
+			"stale_source",
+			"integration authority changed between collective preflights",
+		);
+	if (!plan.casRequired)
+		return Object.freeze({ casCount: 0, finalSha: expectedTargetSha });
+	fault?.("integration.before_cas");
+	if (canonicalJson(before) !== canonicalJson(preflight()))
+		fail(
+			"stale_source",
+			"integration authority changed immediately before compare-and-swap",
+		);
+	deterministicGit(
+		repository,
+		["update-ref", targetRef, plan.finalSha, expectedTargetSha],
+		{ execFile },
+	);
+	fault?.("integration.after_cas");
+	return Object.freeze({ casCount: 1, finalSha: plan.finalSha });
+}
+
+export function synchronizeIntegrationTarget({
+	expectedTarget,
+	finalSha,
+	active,
+	exec,
+	fault,
+} = {}) {
+	validateGitObjectId(finalSha, "integration final SHA");
+	verifySynchronizationBase(expectedTarget, finalSha, active, exec);
+	checkpoint(fault, "integration.before_sync");
+	exec("git", [
+		"-C",
+		expectedTarget.path,
+		"read-tree",
+		"-u",
+		"-m",
+		expectedTarget.head_sha,
+		finalSha,
+	]);
+	checkpoint(fault, "integration.during_sync");
+	const observed = liveIntegrationTarget(
+		{ ...expectedTarget, head_sha: finalSha },
+		active,
+		exec,
+	);
+	checkpoint(fault, "integration.before_observed_publication");
+	return observed;
+}
+
+export function validateIntegrationPublication({
+	repository,
+	targetRef,
+	expectedSha,
+	execFile,
+} = {}) {
+	const actual = deterministicGit(repository, ["rev-parse", targetRef], {
+		execFile,
+	});
+	if (actual !== expectedSha)
+		fail(
+			"stale_source",
+			"published integration ref does not equal the planned final SHA",
+		);
+	return actual;
 }
 
 export function mergeImmutableSource({

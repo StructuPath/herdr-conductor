@@ -2,18 +2,24 @@
 export {
 	acquireRepositoryLock,
 	createRun,
+	ensurePrivateSubdirectory,
 	fsyncDirectory,
 	inspectRepositoryLock,
 	loadActiveRun,
+	loadArchivedRun,
 	openRepositoryStore,
 	publishExclusiveJson,
+	publishExclusivePrivateBytes,
+	copyExclusivePrivateBytes,
 	readPrivateJson,
+	readStablePrivateBytes,
+	scanExactDirectory,
 	releaseRepositoryLock,
 	resolveGitCommonDirectory,
 	writeAtomicJson,
 } from "./state-internal.mjs";
 export {
 	archiveActiveRun,
-	findRecoverableArchive,
+	inspectArchiveUncertainty,
 	performJournaledOperation,
 } from "./operation-journal.mjs";

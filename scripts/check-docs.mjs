@@ -30,7 +30,7 @@ const CANONICAL_VERIFICATION_FILES = [
 	"SECURITY.md",
 	"docs/private-state-v1.md",
 ];
-const STAGE_RUNTIME_TEST = /^stage1-runtime-.*\.test\.mjs$/;
+const STAGE_RUNTIME_TEST = /^(?:stage1-runtime-.*|stage2-.*)\.test\.mjs$/;
 const CURRENT_CLAIM_FILES = [
 	"README.md",
 	"SECURITY.md",
@@ -245,11 +245,19 @@ export function validateDocs(root) {
 
 	const requiredScripts = [
 		"test",
+		"test:stage2",
 		"check",
 		"check:shell",
+		"check:shellcheck",
+		"check:python",
+		"check:workflow",
 		"check:manifest",
 		"check:docs",
 		"check:evidence",
+		"check:release",
+		"report:publish",
+		"evidence:stage2:live",
+		"evidence:stage2:finalize",
 	];
 	for (const script of requiredScripts) {
 		if (typeof packageJson?.scripts?.[script] !== "string") {
@@ -286,29 +294,34 @@ export function validateDocs(root) {
 	const requiredBoundaries = [
 		[
 			"README.md",
-			"no `CONDUCTOR_REPO`, ambient-cwd, process-ID, or newest-global fallback",
+			"there is no `CONDUCTOR_REPO`, ambient-cwd, process-ID, or newest-global fallback",
 		],
 		["README.md", "`harvest` is explicitly invoked and attended"],
 		["README.md", "`stand-down` closes only panes"],
 		["README.md", "B4 live smoke report"],
 		["README.md", "Guard is observational"],
 		["README.md", "does not invoke Swarm"],
+		["README.md", "does not contain or claim results"],
+		["README.md", "exactly Herdr `0.7.5`"],
 		["SECURITY.md", "attended-operational"],
 		["SECURITY.md", "not authentication"],
+		["SECURITY.md", "harness-only exception"],
 		["roles/reviewer.md", "not enforcement"],
 		["roles/reviewer.md", "Expected integration SHA: <full 40-hex SHA>"],
 		["roles/reviewer.md", "git rev-parse HEAD"],
-		["roles/reviewer.md", "output `BLOCKED`"],
+		["roles/reviewer.md", "Output `BLOCKED`"],
 		["roles/reviewer.md", "does not advance this cwd"],
+		["roles/reviewer.md", "unauthenticated worker assertions"],
 		["roles/validator.md", "does not verify source immutability"],
 		["roles/validator.md", "Expected integration SHA: <full 40-hex SHA>"],
 		["roles/validator.md", "git rev-parse HEAD"],
-		["roles/validator.md", "output `BLOCKED`"],
+		["roles/validator.md", "Output `BLOCKED`"],
 		["roles/validator.md", "does not advance this cwd"],
+		["roles/validator.md", "`changed_paths` and `artifacts` are exactly `[]`"],
 		["herdr-plugin.toml", "Snapshot Conductor status"],
 		[
 			"herdr-plugin.toml",
-			"Archive strict state and close only panes matching the full live recorded identity tuple",
+			"Archive strict state and close only panes matching the deterministic full live recorded identity tuple",
 		],
 		["docs/history/README.md", "not current runtime"],
 	];
@@ -336,7 +349,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === sourcePath) {
 		process.exitCode = 1;
 	} else {
 		process.stdout.write(
-			`Docs valid: ${result.actionCount} actions agree and ${result.currentDocumentCount} current documents retain Stage 1 B4 boundaries.\n`,
+			`Docs valid: ${result.actionCount} actions agree and ${result.currentDocumentCount} current documents retain Stage 2 boundaries.\n`,
 		);
 	}
 }

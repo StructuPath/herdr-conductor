@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import {
+	mkdirSync,
 	mkdtempSync,
 	readFileSync,
 	realpathSync,
@@ -11,6 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { publishWorkerReport } from "./stage1-runtime-helpers.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const BASH = process.env.CONDUCTOR_TEST_BASH ?? "bash";
@@ -30,7 +32,7 @@ test("board and status reject absent plugin context instead of selecting global 
 	}
 });
 
-test("all Stage 1 shell entrypoints execute positively with strict complete-argv fakes", () => {
+test("all five report-first shell entrypoints execute positively with strict complete-argv fakes", async () => {
 	const base = mkdtempSync(join(tmpdir(), "conductor-b2-entrypoints-"));
 	try {
 		const repositoryPath = join(base, "repository");
@@ -53,11 +55,32 @@ test("all Stage 1 shell entrypoints execute positively with strict complete-argv
 		writeFileSync(join(repository, "base.txt"), "base\n");
 		execFileSync("git", ["-C", repository, "add", "base.txt"]);
 		execFileSync("git", ["-C", repository, "commit", "-qm", "base"]);
+		const stateRootPath = join(base, "state");
+		mkdirSync(stateRootPath, { mode: 0o700 });
+		const stateRoot = realpathSync(stateRootPath);
 		writeFileSync(
 			join(repository, ".herdr-conductor.json"),
 			JSON.stringify({
-				version: 1,
-				roles: [{ name: "builder", kind: "pi", mode: "write" }],
+				version: 2,
+				state_root: { kind: "absolute", path: stateRoot },
+				worktree_root: ".conductor-worktrees",
+				roles: [
+					{
+						name: "builder",
+						contract_role: "builder",
+						kind: "pi",
+						mode: "write",
+						assignment: {
+							title: "Shell lifecycle",
+							mission: "Exercise the report-first shell actions",
+							acceptance_criteria: [],
+							owned_paths: ["shell-harvest.txt"],
+							forbidden_paths: [],
+							required_commands: [],
+						},
+						validator_artifacts: [],
+					},
+				],
 			}),
 		);
 		const workspace = "wEntry";
@@ -73,7 +96,7 @@ test("all Stage 1 shell entrypoints execute positively with strict complete-argv
 			FAKE_HERDR_STATE: join(base, "herdr.json"),
 			FAKE_HERDR_REPOSITORY: repository,
 			FAKE_HERDR_WORKSPACE: workspace,
-			CONDUCTOR_STATE_DIR: join(base, "state"),
+			CONDUCTOR_STATE_DIR: stateRoot,
 		};
 		const assembled = spawnSync(BASH, [join(ROOT, "scripts", "assemble.sh")], {
 			encoding: "utf8",
@@ -88,6 +111,14 @@ test("all Stage 1 shell entrypoints execute positively with strict complete-argv
 		);
 		execFileSync("git", ["-C", workerCwd, "add", "shell-harvest.txt"]);
 		execFileSync("git", ["-C", workerCwd, "commit", "-qm", "shell fixture"]);
+		await publishWorkerReport(
+			{
+				repository,
+				workspace,
+				stateRoot: env.CONDUCTOR_STATE_DIR,
+			},
+			assembly.workers[0],
+		);
 		const board = spawnSync(BASH, [join(ROOT, "scripts", "board.sh")], {
 			encoding: "utf8",
 			env,
@@ -105,7 +136,10 @@ test("all Stage 1 shell entrypoints execute positively with strict complete-argv
 			env,
 		});
 		assert.equal(harvest.status, 0, harvest.stderr);
-		assert.equal(JSON.parse(harvest.stdout).merges.length, 1);
+		assert.equal(
+			JSON.parse(harvest.stdout).lifecycle,
+			"integration_harvested_no_gates",
+		);
 		assert.equal(
 			readFileSync(join(repository, "shell-harvest.txt"), "utf8"),
 			"merged by shell harvest\n",

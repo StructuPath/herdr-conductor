@@ -1,64 +1,104 @@
-# Security Policy
+# Security policy
 
 ## Supported scope
 
-Conductor `0.2.0` is Stage 1 **attended-operational** software for cooperative
-processes under one OS user, supported only on exactly Herdr `0.7.5`. Worktrees,
-Guard observations, hashes, file modes, prompts, private state, and retained live
-evidence are coordination and review aids, not authentication, authorization, or
-isolation boundaries against a malicious same-user process.
+Conductor `0.3.0` provides Stage 2 **attended-operational** strict task/report
+contracts on exactly Herdr `0.7.5`, protocol `17`, API schema `1`, under one
+cooperative OS user. The five actions preserve physical repository/workspace/run
+identity, strict private state, one repository mutation lock, journaled crash
+truth, deterministic zero-or-one target compare-and-swap, exact-SHA gate sources,
+and exact-identity stand-down/archive.
 
-The complete lifecycle is not approved for unattended or destructive use. All
-five actions enforce the exact supported Herdr runtime before reading or mutating
-lifecycle state. Stage 1 B3
-binds all five actions to strict repository/workspace JSON state. Attended
-harvest binds its target at assemble time, merges immutable SHAs with plumbing,
-and compare-and-swaps the exact validated target ref. Stand-down rechecks the
-full live pane/agent tuple immediately before close, archives strict state, and
-deletes no retained resources. Important holds remain:
+These controls prevent accidental authority confusion; they are not
+authentication, sandboxing, signatures, or remote attestation. Worker-reported
+`delivered`, `approve`, `pass`, command/criterion results, identity, evidence, and
+external reviewer identity/independence/findings are unauthenticated assertions.
+They do not authorize apply, release, or any other effect.
 
-- Herdr pane close accepts only `pane_id`, so a same-user TOCTOU remains after the
-  final identity read;
-- failed/timed-out merge or close is ambiguous and requires manual recovery;
-- private archive state/pointer transitions are exactly retryable, but no
-  ambiguous external merge or close is automatically recovered;
-- role modes do not enforce read-only behavior;
-- Guard observes rendered text but cannot prove prevention;
-- strict task/report, verdict, and approval contracts are not implemented.
+## Preserved boundaries
 
-The retained B4 report is sanitized operator-observed local evidence anchored to
-a candidate Git tree, source manifest, and deterministic checker. It is not a
-cryptographic remote attestation and cannot authenticate against evidence
-fabricated by another process running as the same OS user.
+- Every source-capable pane/agent starts only after its immutable task and empty
+  private outbox are durable and journal-observed.
+- The bounded-stdin publisher accepts one task-bound canonical report and never
+  accepts a destination or payload path. Partial/duplicate/changed publication
+  inventory fails closed.
+- Collector-computed Git changes must exactly equal declared changed paths, fall
+  under exactly one owned prefix, and avoid forbidden prefixes.
+- All producers must have accepted completed/delivered reports before one
+  deterministic integration plan can perform one target CAS. Missing, failed,
+  rejected, conflicted, drifted, or raced input performs zero CAS.
+- Reviewer/validator sources are distinct detached worktrees at the exact
+  integration SHA. Report outboxes are outside source; schema-v1 gate changed
+  paths, source outputs, and artifacts are empty.
+- Stand-down binds one deterministic close set and closes only an exact live
+  pane/agent/cwd tuple. It retains every product worktree, branch, task, outbox,
+  report, gate source, artifact, recording, log, and operation record.
+- No product cleanup, prune, migration, expiry, adoption, ambiguous recovery,
+  preview, approval receipt, approval consumption, apply, suite adapter,
+  unattended launch, Browser promotion, site repin, push, or deployment is
+  implemented.
 
-Legacy shell state is never B3 authority and is not sourced, migrated, adopted,
-or dual-written by plugin actions. Do not run Swarm and Conductor concurrently
-against one Git common directory. Preserve recovery-required state and panes for
-manual inspection rather than guessing ownership.
+## Residual risks
+
+- A malicious or racing same-UID process can read, chmod, replace, or fabricate
+  local state/evidence and mutate Git common state. Modes and digests do not
+  authenticate it.
+- Final filesystem/Git checks and Herdr pane-ID close retain same-user TOCTOU
+  windows. Herdr `0.7.5` offers no conditional close tuple.
+- A crash after possible Git CAS, pane close, archive publication, or evidence
+  unlink remains uncertain. Stage 2 does not infer success or replay it.
+- Retained product state consumes cumulative disk; no product expiry or cleanup
+  API exists.
+- Only 40-hex SHA-1-width Git repositories are supported.
+- Guard is observational and cannot prove prevention. Role modes and read-only
+  file modes are cooperative boundaries, not a malicious-process sandbox.
+
+## Installed evidence harness
+
+The live harness is a separate explicit destructive test boundary, never a
+product action. It requires immutable clean Commit A, a complete exact-source
+external review with no blocker/high/medium finding, exact Herdr versions, a
+private empty output parent, and the opt-in phrase. It creates no result files
+before positive teardown proof.
+
+Disposable resources are controlled by a nonce-bound, sealed, descriptor-held
+manifest and deleted only by exact recorded identity. Unsupported primitives,
+substitution, unexpected inventory, or uncertainty retain residue. Because
+Herdr `0.7.5` does not forward action environment variables, the harness also
+binds the exact previously absent repository-keyed child beneath normal private
+state, captures its retained inventory, removes only that child through a held
+private parent descriptor, fsyncs the parent, proves it absent, and proves
+neighboring state identity/bytes unchanged. This narrow harness-only exception
+is not product cleanup authority and does not weaken the runtime state contract.
+
+The post-proof trio retains only a domain-separated output-parent binding digest,
+not local path/device/inode/UID metadata. It excludes prompts, transcripts, raw
+command output, sockets, secrets/tokens, environment, private paths, and artifact
+contents. Same-UID fabrication remains outside the guarantee.
 
 ## Reporting a vulnerability
 
-Report command injection, wrong-repository mutation, foreign pane/worktree
-cleanup, state confusion, or sandbox-claim defects privately through
+Report command injection, cross-repository/workspace mutation, report authority
+confusion, path-policy bypass, wrong-tree validation, unsafe pane close, or broad
+harness deletion privately through
 [GitHub Security Advisories](https://github.com/StructuPath/herdr-conductor/security/advisories/new).
-Include the plugin/Herdr versions, OS, action or function, sanitized reproduction
-steps, and whether any pane, worktree, ref, or file changed.
+Include Conductor/Herdr versions, OS, exact action or function, sanitized steps,
+expected refusal, observed effect, and whether a crash boundary was involved.
+Do not attach credentials, tokens, raw private state, full paths, prompts,
+transcripts, recordings, customer data, or unsanitized action output.
 
-Do not attach credentials, recordings, full terminal transcripts, absolute home
-paths, or raw state that may contain secrets. Replace sensitive values while
-preserving the field shape needed to reproduce the issue.
-
-A maintainer should acknowledge a report, reproduce it in an isolated repository,
-and avoid destructive cleanup until identity is proven. Public disclosure and
-release timing are coordinated after a fix and negative regression evidence are
-available.
+A maintainer should reproduce in an isolated repository and avoid destructive
+cleanup until exact identity is proven. Coordinate disclosure and release only
+after a bounded fix, negative regression evidence, exact candidate review, and
+all applicable release gates.
 
 ## Verification
 
-Run the complete release gate and the canonical split runtime suite before
-accepting security-sensitive lifecycle changes:
-
 ```bash
 npm run check
-node --test tests/stage1-runtime-*.test.mjs tests/state-kernel.test.mjs
+npm run test:stage2
+shellcheck --shell=bash scripts/*.sh
+python3 -m py_compile scripts/harness-fs-helper.py
+go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+node --test tests/stage1-runtime-*.test.mjs tests/stage2-*.test.mjs
 ```

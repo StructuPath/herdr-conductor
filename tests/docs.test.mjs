@@ -22,7 +22,7 @@ const requiredFiles = [
 	"roles/validator.md",
 	...fs
 		.readdirSync(path.join(root, "tests"))
-		.filter((name) => /^stage1-runtime-.*\.test\.mjs$/.test(name))
+		.filter((name) => /^(?:stage1-runtime-.*|stage2-.*)\.test\.mjs$/.test(name))
 		.map((name) => `tests/${name}`),
 	"tests/private-state-schema.test.mjs",
 	"tests/state-kernel.test.mjs",
@@ -44,7 +44,7 @@ function fixture() {
 	return base;
 }
 
-test("repository documentation passes the Stage 1 B3/B4 claim contract", () => {
+test("repository documentation passes the Stage 2 claim contract", () => {
 	assert.deepEqual(validateDocs(root).errors, []);
 });
 

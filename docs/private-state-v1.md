@@ -1,13 +1,14 @@
 # Conductor private state v1
 
-**Status:** Stage 1 B3. All five actions use this state exclusively through
-`scripts/stage1-runtime.mjs`. Harvest is attended identity-checked reconcile;
-stand-down is identity-checked pane close followed by strict-state archive.
+**Status:** Stage 2 in Conductor `0.3.0`. All five actions use this state
+exclusively through `scripts/stage1-runtime.mjs`. Tasks/outboxes precede agents;
+report collection, deterministic integration, exact-SHA gates, stand-down close
+prefixes, and archive share the same journal authority.
 
-This document describes Conductor's private, non-executable state format and the
-failure boundaries implemented by `scripts/private-state-schema.mjs` and
-`scripts/state-kernel.mjs`. It is not a public suite contract and does not make
-the current `0.2.0` lifecycle authenticated or free of the documented same-user TOCTOU limits.
+This document describes Conductor's private, non-executable state and crash
+boundaries implemented by `scripts/private-state-schema.mjs` and
+`scripts/state-kernel.mjs`. It is not a public suite contract, authentication,
+or freedom from the documented same-user TOCTOU limits.
 
 ## Identity and layout
 
@@ -40,6 +41,16 @@ Every run also records its exact canonical repository worktree root.
         activation.guard.json              present only during activation
         operations/<sequence>-<operation-id>.json
         operation-guards/<sequence>-<operation-id>.json
+        contracts/
+          tasks/<role>/<task-generation>.json
+          reports/<role>/<task-generation>/<report-generation>.json
+        outboxes/<role>/<outbox-generation>/
+          report-<task-generation>-<outbox-generation>/
+            .publishing.json                publication uncertainty only
+            .staging-<nonce>                publication uncertainty only
+            report.json                     immutable raw payload
+            COMMITTED.json                  immutable commit marker
+        gate-sources/<role>/<source-generation>/
 ```
 
 `workspace-key` is a SHA-256 over the exact bounded Herdr workspace ID. Every
@@ -176,69 +187,89 @@ If result publication is uncertain after an external effect, the surviving
 intent remains ambiguous unless an exact observed result can later be read. B1
 provides diagnosis and refusal, not automatic rollback, retry, or recovery.
 
-## B3 runtime binding and current holds
+## Stage 2 runtime binding
 
-All five actions enter `scripts/stage1-runtime.mjs`, the sole shipped lifecycle
-authority. The runtime requires strict
-`HERDR_PLUGIN_CONTEXT_JSON` repository/workspace identity, resolves one fixed
-fork SHA before effects, generates unpredictable run/resource identities, uses
-run-unique full refs and agent names, and journals intent plus exact observation
-around each Git/Herdr operation. It never adopts a same-named resource.
+All five actions enter `scripts/stage1-runtime.mjs`, the sole lifecycle
+authority. The runtime accepts only strict `HERDR_PLUGIN_CONTEXT_JSON`, resolves
+one fixed fork and target before effects, generates independent run/source/task/
+outbox/pane/agent/report/snapshot generations, uses run-unique refs/names, and
+never adopts same-named resources.
 
-Board and status load only the active run for the invoking physical repository
-and workspace. Live status compares both pane and named-agent views against the
-recorded full tuple; it reports unavailable or foreign/stale identity rather
-than selecting another run. Two repositories under one state root and two
-workspaces under one repository remain isolated by tests.
+Configuration version 2 is closed to `version`, required tagged `state_root`,
+`worktree_root`, and `roles`. `state_root` is exactly `{ "kind": "default" }`
+for normal operation or `{ "kind": "absolute", "path": <canonical absolute> }`
+for a sealed disposable harness. Every action reads configuration first, derives
+the same root, and validates the run-bound configuration digest; there is no
+environment or compatibility fallback. Every role binds a closed assignment and
+empty `validator_artifacts`; launch
+arguments do not exist. For each producer the runtime creates/observes source,
+creates the exact empty outbox slot, exclusively publishes the immutable task,
+and journals `task.publish` before `pane.create` or `agent.start`. A task without
+one attached observed agent is inert.
 
-No sourceable legacy lifecycle is shipped. The hash-chained journal is the one
-canonical observed-resource authority; B3 creates no second unsynchronized
-projection and performs no legacy write or dual-write.
+The publisher reads descriptor 0 through actual EOF with a 1,048,576-byte bound.
+It validates canonical report bytes, digest, exact task path/scope/configuration,
+observed agent, source identity, and empty slot before creating a guard. Its exact
+sequence is guard, staging payload, immutable raw payload, immutable commit
+marker, directory fsyncs, staging unlink, then guard unlink. Any guard/staging,
+malformed/extra inventory, changed payload/marker, or durability uncertainty is
+`recovery_required`; replacement/adoption is forbidden.
 
-Harvest holds the repository mutation lock continuously across canonical journal
-load and source/target preflight. It validates the assemble-bound target and each
-immutable source SHA, computes the merged tree/commit without moving a ref, then
-uses compare-and-swap `git update-ref` against the validated old target SHA.
-Source and target identity are re-read after injectable race boundaries and
-immediately before CAS. The verified target index/worktree is refreshed with
-`read-tree` without moving the ref again. After the journal's post-effect
-checkpoint and while the repository lock remains held, the merge publication
-validator re-reads the exact target path/common directory/ref/head/membership,
-expected merged SHA, index tree, and tracked worktree cleanliness before any
-observed result write. Drift is retained as `needs_attention` and prohibits
-replay. The lock is cooperative same-user coordination, so another same-user
-process can still mutate Git immediately after this final validation; it is not
-authentication or an elimination of that residual TOCTOU race. Conflict and
-command diagnostics are retained; failed commands are ambiguous and prohibit
-replay.
+`report.harvest` and `report.reject` are mutually exclusive terminal operations
+for one report generation. Complete deterministic task/source/path/requirement
+failure executes rejection with no accepted copy or external effect. Incomplete
+transport/command/descriptor observation creates no rejection intent. Successful
+harvest retains the raw pair and publishes one immutable accepted copy. Exact
+observed retry returns recorded authority without reopening input.
 
-Stand-down re-reads one exact pane+agent tuple immediately before each close and
-requires workspace, pane, terminal, named agent/session, both canonical cwd
-fields, run, and generation to match. Missing, malformed, duplicate, foreign,
-stale, or transport-error data closes nothing for that pane. Herdr `0.7.5` has no
-conditional close parameter beyond pane ID, so the same-user TOCTOU remains.
-After successful closes, a recoverable private archive state machine durably
-records intent, marks the run archived, removes and fsyncs its active pointer,
-and only then records the archive result. Exact retry skips observed closes and
-completes private archive boundaries idempotently. Worktrees, branches,
-artifacts, reports, recordings, logs, Guard files, and legacy inventory remain.
+Integration requires accepted completed/delivered reports for every producer.
+The collector computes exact fixed-fork changes with rename/copy detection
+disabled, enforces declared-path equality and component-aware owned/forbidden
+policy, then collectively validates every task/agent/source/path/configuration/
+target twice. Synthetic commits use fixed identity/time/message and configured
+role order. A complete chain moves the target through one `update-ref` CAS; every
+missing, failed, rejected, conflicted, drifted, raced, or incomplete case performs
+zero CAS. `P=[]` records unchanged integration with zero CAS.
 
-Every effecting action first gates the runtime to exact Herdr 0.7.5, protocol 17,
-and schema 1. Stage 1 enables no worktree/branch deletion, prune, suite adapter,
-approval contract, unattended trigger, Browser promotion, or recovery tooling.
-Version 0.2.0 records attended-operational Stage 1 and does not widen those
-Stage 2 and later holds.
+After observed integration harvest, every reviewer/validator receives a distinct
+registered detached worktree at the exact integration SHA/tree. Source modes are
+`0555` directories, retained executable tracked modes, `0444` other tracked files
+and linked-worktree `.git`; no symlink is followed. All gate sources and tasks are
+observed before any gate pane, and all gate panes before agents. Gate reports have
+empty changed paths/artifacts. Source mutation creates stable refusal but does
+not weaken later exact pane-close identity.
+
+The lifecycle scanner validates complete journal/inventory/configuration before
+deriving exactly one clean/stable/stand-down/archive state. Uncertainty outranks
+stable progress. `run.stand-down.begin` binds source state, reason/outcome, exact
+sorted close set, and archive operation. Each retry may close only entry `k+1`
+after full journal plus live pane/agent/cwd revalidation. A possible close effect
+is uncertain and never replayed. Archive begins only after all closes, including
+`N=0`; all product resources remain retained.
+
+Board/status select only the invoking physical repository/workspace and render
+scanner-derived authority. Two repositories and two same-repository workspaces
+with colliding logical IDs remain isolated by tests. Every effect gates exact
+Herdr `0.7.5`, protocol `17`, schema `1`.
+
+Private state remains cooperative same-user coordination. The repository lock
+does not stop unrelated Git or same-UID mutation after final checks, and Herdr's
+pane close accepts only pane ID, leaving documented TOCTOU. Stage 2 has no
+ambiguous-operation recovery, product cleanup/prune/migration/expiry, Stage 3
+preview/approval/apply, suite adapter, unattended trigger, Browser promotion,
+push, or deployment.
 
 ## Verification
 
 ```bash
 node --test tests/private-state-schema.test.mjs tests/state-kernel.test.mjs \
-  tests/stage1-runtime-*.test.mjs
+  tests/stage1-runtime-*.test.mjs tests/stage2-*.test.mjs
 npm run check
 ```
 
-The B1-B3 suite includes malformed and duplicate JSON, symlink/mode/type
-failures, physical repository identity, v1-root isolation, repository/workspace
-cross-isolation, lock contention/races, duplicate-active/orphan state, stale
-identities, strict fake Git/Herdr ordering, exact observed identities, and fault
-injection proving uncertain operations are not replayed.
+The suite covers malformed/duplicate contracts, symlink/mode/type failures,
+physical identity, repository/workspace isolation, lock/concurrency races,
+task-before-agent barriers, bounded publication, rejection/harvest mutual
+exclusion, lifecycle partitions, zero/one CAS, exact-SHA gates, every stand-down
+prefix, and deterministic plus true-`SIGKILL` crash boundaries proving uncertain
+operations are not replayed.

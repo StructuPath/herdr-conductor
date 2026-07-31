@@ -1,46 +1,46 @@
 id = "structupath.conductor"
 name = "Conductor"
-version = "0.2.0"
+version = "0.3.0"
 min_herdr_version = "0.7.5"
-description = "Stage 1 attended operations with strict context-bound assembly, identity-checked reconciliation, and archival pane close"
+description = "Stage 2 attended strict task/report contracts and exact-SHA review gates for Herdr 0.7.5"
 platforms = ["macos", "linux"]
 
-# Stage 1 B4-verified actions use one strict context-bound JSON authority. Dispatch/report,
-# suite adapter, and approval contracts remain held for Stage 2+. Plugin actions receive no argv/TTY, so the team is declared in
-# the invoking repository's .herdr-conductor.json.
+# Exactly five attended actions share one strict context-bound runtime authority.
+# Herdr actions receive no arguments. Configuration v2 contains no launch
+# arguments; task authority is durable before any pane or agent starts.
 
 [[actions]]
 id = "assemble"
 title = "Assemble the team"
-description = "Create a strict context-bound run from one fixed fork, wait through explicit pane-busy refusal, and journal exact role worktree, pane, and agent identity"
+description = "Publish strict producer tasks and private report outboxes before creating task-bound panes and agents"
 command = ["bash", "scripts/assemble.sh"]
 
 [[actions]]
 id = "board"
 title = "Snapshot Conductor status"
-description = "Print one live JSON status snapshot for the invoking repository and Herdr workspace only"
+description = "Print one passive lifecycle snapshot for the invoking physical repository and Herdr workspace"
 command = ["bash", "scripts/board.sh"]
 
 [[actions]]
 id = "status"
 title = "Status of the run"
-description = "Print context-bound live status after comparing exact recorded and observed agent identity"
+description = "Print context-bound task, report, integration, gate, and exact live identity status"
 command = ["bash", "scripts/status.sh"]
 
 [[actions]]
 id = "harvest"
 title = "Harvest the run"
-description = "Attended reconcile after live source and integration-target Git identity checks under one repository lock"
+description = "Attended report collection, complete deterministic one-CAS integration, and exact-SHA gate dispatch"
 command = ["bash", "scripts/harvest.sh"]
 
 [[actions]]
 id = "stand-down"
 title = "Stand down the team"
-description = "Archive strict state and close only panes matching the full live recorded identity tuple"
+description = "Archive strict state and close only panes matching the deterministic full live recorded identity tuple"
 command = ["bash", "scripts/stand-down.sh"]
 
-# The pane entrypoint is a passive strict-state renderer. The board action does
-# not open or focus panes because that mutation is held until identity is journaled.
+# The single board pane remains passive. It neither launches a mission nor
+# creates, harvests, closes, applies, or cleans any product resource.
 
 [[panes]]
 id = "board-pane"

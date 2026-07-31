@@ -4,8 +4,15 @@ import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { assemble } from "../../scripts/stage1-runtime.mjs";
 
-const [repository, stateRoot, configPath, logPath, target, seedArg = "1"] =
-	process.argv.slice(2);
+const [
+	repository,
+	stateRoot,
+	configPath,
+	logPath,
+	target,
+	seedArg = "1",
+	targetOccurrenceArg = "1",
+] = process.argv.slice(2);
 const workspace = "wCrash";
 const config = JSON.parse(readFileSync(configPath, "utf8"));
 const [role] = config.roles;
@@ -14,7 +21,7 @@ const token = (offset, bytes) =>
 	(startSeed + offset).toString(16).padStart(2, "0").repeat(bytes);
 const runId = `r-${token(0, 12)}`;
 const paneGeneration = token(role.mode === "write" ? 3 : 2, 16);
-const agentSuffix = token(role.mode === "write" ? 4 : 3, 6);
+const agentSuffix = token(role.mode === "write" ? 7 : 6, 6);
 const branch = `conductor/${runId}/${role.name}`;
 const worktree = join(repository, ".conductor-worktrees", runId, role.name);
 const forkSha = execFileSync("git", ["-C", repository, "rev-parse", "HEAD"], {
@@ -54,6 +61,7 @@ function fakeExec(command, args) {
 			assert.ok(
 				[
 					JSON.stringify(["-C", args[1], "rev-parse", "HEAD"]),
+					JSON.stringify(["-C", args[1], "rev-parse", "HEAD^{tree}"]),
 					JSON.stringify(["-C", args[1], "rev-parse", "--show-toplevel"]),
 					JSON.stringify([
 						"-C",
@@ -204,6 +212,8 @@ function fakeExec(command, args) {
 }
 
 let seed = startSeed;
+let targetOccurrences = 0;
+const targetOccurrence = Number(targetOccurrenceArg);
 await assemble({
 	contextJson: JSON.stringify({
 		workspace_id: workspace,
@@ -216,6 +226,9 @@ await assemble({
 	exec: fakeExec,
 	random: (bytes) => Buffer.alloc(bytes, seed++),
 	fault(name) {
-		if (name === target) process.kill(process.pid, "SIGKILL");
+		if (name !== target) return;
+		targetOccurrences++;
+		if (targetOccurrences === targetOccurrence)
+			process.kill(process.pid, "SIGKILL");
 	},
 });

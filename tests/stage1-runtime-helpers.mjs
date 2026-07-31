@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
+import { Readable } from "node:stream";
 import {
+	chmodSync,
 	existsSync,
 	mkdirSync,
 	mkdtempSync,
@@ -21,6 +23,7 @@ import {
 	standDown,
 } from "../scripts/stage1-runtime.mjs";
 import {
+	canonicalJson,
 	StateKernelError,
 	parseStrictJsonBytes,
 	validateActiveRun,
@@ -33,6 +36,12 @@ import {
 	loadActiveRun,
 	openRepositoryStore,
 } from "../scripts/state-kernel.mjs";
+import {
+	parseTaskBytes,
+	reportDigest,
+} from "../scripts/task-report-schema.mjs";
+import { publishReportFromStdin } from "../scripts/report-publisher.mjs";
+import { computeChangedPaths } from "../scripts/source-policy.mjs";
 
 const trash = [];
 function temp(prefix) {
@@ -40,9 +49,21 @@ function temp(prefix) {
 	trash.push(path);
 	return path;
 }
-process.on("exit", () =>
-	trash.forEach((path) => rmSync(path, { recursive: true, force: true })),
-);
+function makeTreeRemovable(path) {
+	if (!existsSync(path)) return;
+	chmodSync(path, 0o700);
+	for (const entry of readdirSync(path, { withFileTypes: true })) {
+		const child = join(path, entry.name);
+		if (entry.isDirectory()) makeTreeRemovable(child);
+		else if (!entry.isSymbolicLink()) chmodSync(child, 0o600);
+	}
+}
+process.on("exit", () => {
+	for (const path of trash) {
+		makeTreeRemovable(path);
+		rmSync(path, { recursive: true, force: true });
+	}
+});
 
 function git(cwd, ...args) {
 	return execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8" }).trim();
@@ -57,6 +78,12 @@ function repo() {
 	git(path, "commit", "-qm", "base");
 	return realpathSync(path);
 }
+function privateStateRoot(prefix = "conductor-b2-state-") {
+	const path = join(temp(prefix), "state");
+	mkdirSync(path, { mode: 0o700 });
+	return realpathSync(path);
+}
+
 function context(repository, workspace = "wB2") {
 	return JSON.stringify({
 		workspace_id: workspace,
@@ -64,14 +91,41 @@ function context(repository, workspace = "wB2") {
 		focused_pane_id: `${workspace}:p0`,
 	});
 }
-function config(repository, roles, overrides = {}) {
+function config(repository, roles, overrides = {}, stateRoot = null) {
 	const path = join(repository, ".herdr-conductor.json");
+	const stage2Roles = roles.map((role) => {
+		if (role.contract_role === undefined) {
+			role.contract_role = role.mode === "read-only" ? "builder" : "builder";
+			role.mode = "write";
+		}
+		const configured = {
+			name: role.name,
+			contract_role: role.contract_role,
+			kind: role.kind,
+			mode: role.mode,
+			assignment: role.assignment ?? {
+				title: `Task for ${role.name}`,
+				mission: `Complete the attended ${role.name} task`,
+				acceptance_criteria: [],
+				owned_paths: ["src"],
+				forbidden_paths: [],
+				required_commands: [],
+			},
+			validator_artifacts: role.validator_artifacts ?? [],
+		};
+		if (role.launch_args !== undefined)
+			configured.launch_args = role.launch_args;
+		return configured;
+	});
 	writeFileSync(
 		path,
 		JSON.stringify({
-			version: 1,
+			version: 2,
+			state_root: stateRoot
+				? { kind: "absolute", path: stateRoot }
+				: { kind: "default" },
 			worktree_root: ".conductor-worktrees",
-			roles,
+			roles: stage2Roles,
 			...overrides,
 		}),
 	);
@@ -116,10 +170,25 @@ class FakeHerdr {
 			this.onEffect?.(call);
 		}
 	}
-	exec = (command, args) => {
+	exec = (command, args, options = {}) => {
 		if (command === "git") {
 			assert.equal(args[0], "-C", `Git call omitted -C: ${args.join(" ")}`);
 			if (!this.repository) this.repository = args[1];
+			if (args[2] === "-c") {
+				assert.equal(args[3], "commit.gpgSign=false");
+				assert.ok(
+					new Set(["merge-tree", "commit-tree", "update-ref", "rev-parse"]).has(
+						args[4],
+					),
+					`unscripted deterministic Git call: ${args.join(" ")}`,
+				);
+				if (args[4] === "update-ref") this.record(command, args, true);
+				return execFileSync(command, args, {
+					encoding: options.encoding ?? "utf8",
+					input: options.input,
+					env: options.env,
+				}).trim();
+			}
 			if (!this.roles)
 				this.roles = JSON.parse(
 					readFileSync(join(this.repository, ".herdr-conductor.json"), "utf8"),
@@ -130,30 +199,33 @@ class FakeHerdr {
 				[...this.panes.values()].some((pane) => pane.cwd === args[1]);
 			assert.equal(allowedCwd, true, `foreign Git cwd: ${args[1]}`);
 			if (args[2] === "worktree" && args[3] === "add") {
-				const branch = args[5];
-				const target = args[6];
-				const forkSha = git(this.repository, "rev-parse", "HEAD");
-				assert.match(
-					branch,
-					/^conductor\/r-[a-f0-9]{24}\/[a-z][a-z0-9_-]{0,31}$/,
-				);
-				assert.deepEqual(args, [
-					"-C",
-					this.repository,
-					"worktree",
-					"add",
-					"-b",
-					branch,
-					target,
-					forkSha,
-				]);
-				assert.equal(
-					target,
-					join(
+				let target;
+				if (args[4] === "-b") {
+					const branch = args[5];
+					target = args[6];
+					const forkSha = git(this.repository, "rev-parse", "HEAD");
+					assert.match(
+						branch,
+						/^conductor\/r-[a-f0-9]{24}\/[a-z][a-z0-9_-]{0,31}$/,
+					);
+					assert.deepEqual(args, [
+						"-C",
 						this.repository,
-						".conductor-worktrees",
-						...branch.split("/").slice(1),
-					),
+						"worktree",
+						"add",
+						"-b",
+						branch,
+						target,
+						forkSha,
+					]);
+				} else {
+					assert.equal(args[4], "--detach");
+					target = args[5];
+					assert.match(args[6], /^[a-f0-9]{40}$/);
+				}
+				assert.equal(
+					target.startsWith(join(this.repository, ".conductor-worktrees")),
+					true,
 				);
 				this.worktrees.add(target);
 				this.record(command, args, true);
@@ -161,6 +233,7 @@ class FakeHerdr {
 				assert.ok(
 					[
 						JSON.stringify(["-C", args[1], "rev-parse", "HEAD"]),
+						JSON.stringify(["-C", args[1], "rev-parse", "HEAD^{tree}"]),
 						JSON.stringify(["-C", args[1], "rev-parse", "--show-toplevel"]),
 						JSON.stringify([
 							"-C",
@@ -172,7 +245,9 @@ class FakeHerdr {
 					].includes(JSON.stringify(args)) ||
 						(args.length === 4 &&
 							(/^refs\/heads\//.test(args[3]) ||
-								/^[a-f0-9]{40}\^\{tree\}$/.test(args[3]))),
+								/^[a-f0-9]{40}\^\{tree\}$/.test(args[3]))) ||
+						JSON.stringify(args.slice(2)) ===
+							JSON.stringify(["rev-parse", "--abbrev-ref", "HEAD"]),
 					`unexpected rev-parse: ${args.join(" ")}`,
 				);
 			} else if (args[2] === "merge-base") {
@@ -204,6 +279,9 @@ class FakeHerdr {
 				assert.match(args[4], /^[a-f0-9]{40}$/);
 				assert.match(args[5], /^[a-f0-9]{40}$/);
 				this.record(command, args, true);
+			} else if (args[2] === "reset") {
+				assert.deepEqual(args.slice(2, 4), ["reset", "--hard"]);
+				assert.match(args[4], /^[a-f0-9]{40}$/);
 			} else if (args[2] === "read-tree") {
 				if (args[3] === "-n") {
 					assert.deepEqual(args.slice(2, 6), [
@@ -230,13 +308,33 @@ class FakeHerdr {
 			} else if (args[2] === "diff-files") {
 				assert.deepEqual(args, ["-C", args[1], "diff-files", "--quiet"]);
 			} else if (args[2] === "status") {
-				assert.deepEqual(args, [
-					"-C",
-					args[1],
-					"status",
-					"--porcelain=v1",
-					"--untracked-files=no",
-				]);
+				assert.ok(
+					[
+						JSON.stringify([
+							"-C",
+							args[1],
+							"status",
+							"--porcelain=v1",
+							"--untracked-files=no",
+						]),
+						JSON.stringify([
+							"-C",
+							args[1],
+							"status",
+							"--porcelain=v1",
+							"-z",
+							"--untracked-files=no",
+						]),
+					].includes(JSON.stringify(args)),
+					`unexpected status: ${args.join(" ")}`,
+				);
+			} else if (args[2] === "ls-files") {
+				assert.ok(
+					args.includes("-z"),
+					`gate/source inventory omitted NUL framing: ${args.join(" ")}`,
+				);
+			} else if (args[2] === "-c" && args[3] === "diff.renames=false") {
+				assert.equal(args[4], "diff");
 			} else if (args[2] === "symbolic-ref") {
 				assert.deepEqual(args, ["-C", args[1], "symbolic-ref", "-q", "HEAD"]);
 			} else if (args[2] === "worktree") {
@@ -250,7 +348,9 @@ class FakeHerdr {
 			} else {
 				assert.fail(`unscripted fake Git call: ${args.join(" ")}`);
 			}
-			return execFileSync(command, args, { encoding: "utf8" }).trim();
+			const encoding = options.encoding === null ? null : "utf8";
+			const output = execFileSync(command, args, { encoding });
+			return Buffer.isBuffer(output) ? output : output.trim();
 		}
 		assert.ok(
 			new Set(["fake", "fake-herdr", "herdr"]).has(command),
@@ -267,7 +367,13 @@ class FakeHerdr {
 		}
 		if (args[0] === "pane" && args[1] === "split") {
 			const cwd = args[6];
-			const role = this.roles[this.panes.size];
+			const role = this.roles.find(
+				(candidate) =>
+					cwd.endsWith(`/${candidate.name}`) &&
+					![...this.panes.values()].some(
+						(pane) => pane.role_name === candidate.name,
+					),
+			);
 			assert.deepEqual(args, [
 				"pane",
 				"split",
@@ -278,13 +384,12 @@ class FakeHerdr {
 				cwd,
 				"--no-focus",
 			]);
-			if (role.mode === "read-only") assert.equal(cwd, this.repository);
-			else
-				assert.equal(
-					this.worktrees.has(cwd),
-					true,
-					`pane cwd is not the exact created worktree: ${cwd}`,
-				);
+			assert.ok(role, `pane cwd does not select one configured role: ${cwd}`);
+			assert.equal(
+				this.worktrees.has(cwd),
+				true,
+				`pane cwd is not the exact created worktree: ${cwd}`,
+			);
 			const paneId = `${this.workspace}:p${this.panes.size + 1}`;
 			const pane = {
 				workspace_id: this.workspace,
@@ -292,6 +397,7 @@ class FakeHerdr {
 				terminal_id: `term_${this.panes.size + 1}`,
 				cwd,
 				foreground_cwd: cwd,
+				role_name: role.name,
 				tokens: {},
 			};
 			this.panes.set(paneId, pane);
@@ -317,7 +423,9 @@ class FakeHerdr {
 			const name = args[2];
 			const paneId = args[6];
 			const pane = this.panes.get(paneId);
-			const role = this.roles[Number(paneId.split(":p")[1]) - 1];
+			const role = this.roles.find(
+				(candidate) => candidate.name === pane.role_name,
+			);
 			assert.match(
 				name,
 				new RegExp(`^${role.name.slice(0, 14)}-[a-f0-9]{12}$`),
@@ -519,7 +627,8 @@ function inspectKilledOperation({
 	const guards = documents
 		.filter(({ path }) => path.includes("/operation-guards/"))
 		.map(({ value }) => validateJournalEntry(value));
-	const expectedSequence = operation === "agent.start" ? 3 : 2;
+	const expectedSequence =
+		operation === "agent.start" ? 5 : operation === "pane.create" ? 4 : 2;
 	assert.equal(run.status, "active");
 	assert.equal(
 		run.journal_sequence,
@@ -534,8 +643,16 @@ function inspectKilledOperation({
 	assert.deepEqual(
 		operations.map(({ operation_type }) => operation_type),
 		operation === "agent.start"
-			? ["integration.bind", "pane.create", "agent.start"]
-			: ["integration.bind", operation],
+			? [
+					"integration.bind",
+					"worktree.create",
+					"task.publish",
+					"pane.create",
+					"agent.start",
+				]
+			: operation === "pane.create"
+				? ["integration.bind", "worktree.create", "task.publish", "pane.create"]
+				: ["integration.bind", operation],
 	);
 	const current = operations.at(-1);
 	assert.equal(current.phase, "intent", `${operation}:${boundary} phase`);
@@ -589,22 +706,124 @@ function inspectKilledOperation({
 	return { run, current, guards, lockOwner };
 }
 
+let reportCounter = 1;
+async function buildWorkerReport(fixture, worker, overrides = {}) {
+	const task = parseTaskBytes(readFileSync(worker.task_path));
+	const active = loadActiveRun(
+		openRepositoryStore({
+			stateRoot: fixture.stateRoot,
+			repoPath: fixture.repository,
+		}),
+		{ workspaceId: fixture.workspace },
+	);
+	const agentEntry = active.journal.find(
+		(entry) =>
+			entry.operation_type === "agent.start" &&
+			entry.phase === "observed" &&
+			entry.subject.id === task.role.name,
+	);
+	assert.ok(agentEntry, "worker report requires observed agent authority");
+	const producer = task.source.kind === "role_worktree";
+	const head = producer ? git(task.source.root, "rev-parse", "HEAD") : null;
+	const tree = producer
+		? git(task.source.root, "rev-parse", "HEAD^{tree}")
+		: null;
+	const source = producer
+		? { ...task.source, expected_sha: head, tree_sha: tree }
+		: task.source;
+	const changedPaths = producer
+		? computeChangedPaths(task.source.root, task.source.fork_sha, head)
+		: [];
+	const requirementResults = [
+		...task.assignment.required_commands.map((requirement) => ({
+			requirement_kind: "command",
+			requirement_id: requirement.id,
+			assertion: "passed",
+			evidence_kind: "worker_assertion",
+			command: requirement.command,
+			exit_code: 0,
+			output_sha256: "a".repeat(64),
+			note: "test worker assertion",
+		})),
+		...task.assignment.acceptance_criteria.map((requirement) => ({
+			requirement_kind: "criterion",
+			requirement_id: requirement.id,
+			assertion: "passed",
+			evidence_kind: "worker_assertion",
+			command: null,
+			exit_code: null,
+			output_sha256: null,
+			note: "test worker assertion",
+		})),
+	];
+	const result =
+		task.role.contract_role === "reviewer"
+			? { kind: "review", verdict: "approve" }
+			: task.role.contract_role === "validator"
+				? { kind: "validation", verdict: "pass" }
+				: { kind: "delivery", verdict: "delivered" };
+	const draft = {
+		document_type: "herdr-conductor-report",
+		schema_version: 1,
+		report_id: `report-${task.role.name}`,
+		report_generation: (reportCounter++).toString(16).padStart(32, "0"),
+		task: {
+			id: task.task_id,
+			generation: task.task_generation,
+			digest: task.task_digest,
+		},
+		scope: task.scope,
+		role: task.role,
+		source,
+		agent_observation: {
+			operation_id: task.role.agent_operation_id,
+			entry_digest: agentEntry.entry_digest,
+			agent_generation: task.role.agent_generation,
+			pane_generation: task.role.pane_generation,
+			agent_name: task.role.agent_name,
+		},
+		status: "completed",
+		result,
+		summary: "Test report",
+		findings: [],
+		requirement_results: requirementResults,
+		changed_paths: changedPaths,
+		artifacts: [],
+		completed_at: "2026-07-28T00:00:00.000Z",
+		...overrides,
+	};
+	const report = { ...draft, report_digest: reportDigest(draft) };
+	return { task, report };
+}
+
+async function publishWorkerReport(fixture, worker, overrides = {}) {
+	const { task, report } = await buildWorkerReport(fixture, worker, overrides);
+	await publishReportFromStdin({
+		input: Readable.from([Buffer.from(canonicalJson(report))]),
+		stateRoot: fixture.stateRoot,
+		authorizeTask: () => ({ task }),
+	});
+	return report;
+}
+
 async function assembledFixture({
 	repository = repo(),
 	workspace = "wB2",
-	roles = [{ name: "reviewer", kind: "codex", mode: "read-only" }],
+	roles = [{ name: "builder", kind: "codex", mode: "write" }],
 	seed = 1,
+	random = deterministicRandom(seed),
 	stateRoot = join(temp("conductor-b2-state-"), "state"),
 	fault,
 } = {}) {
 	const fake = new FakeHerdr();
+	mkdirSync(stateRoot, { recursive: true, mode: 0o700 });
+	stateRoot = realpathSync(stateRoot);
 	const result = await assemble({
 		contextJson: context(repository, workspace),
-		stateRoot,
-		configPath: config(repository, roles),
+		configPath: config(repository, roles, {}, stateRoot),
 		exec: fake.exec,
 		herdrBin: "fake-herdr",
-		random: deterministicRandom(seed),
+		random,
 		fault,
 	});
 	return { repository, workspace, stateRoot, fake, result };
@@ -632,6 +851,7 @@ export {
 	temp,
 	git,
 	repo,
+	privateStateRoot,
 	context,
 	config,
 	deterministicRandom,
@@ -645,5 +865,7 @@ export {
 	effectLog,
 	privateDocuments,
 	inspectKilledOperation,
+	buildWorkerReport,
+	publishWorkerReport,
 	assembledFixture,
 };

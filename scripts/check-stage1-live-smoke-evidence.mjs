@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,7 +10,7 @@ import {
 } from "./private-state-schema.mjs";
 import {
 	buildCandidateRuntimeSourceManifest,
-	buildRuntimeSourceManifest,
+	resolveCandidateCommit,
 	validateEvidence,
 	validateRuntimeSourceManifest,
 } from "./stage1-evidence-contract.mjs";
@@ -32,7 +33,7 @@ export function checkCandidateProvenance(
 	rootPath,
 	candidate,
 	retainedManifest,
-	currentManifest = buildRuntimeSourceManifest(rootPath),
+	currentManifest,
 ) {
 	const candidateManifest = buildCandidateRuntimeSourceManifest(
 		rootPath,
@@ -43,26 +44,17 @@ export function checkCandidateProvenance(
 		canonicalJson(retainedManifest),
 		"candidate Git tree differs from retained runtime source manifest",
 	);
-	assert.equal(
-		canonicalJson(candidateManifest),
-		canonicalJson(currentManifest),
-		"candidate Git tree differs from current checkout runtime source",
-	);
+	if (currentManifest !== undefined)
+		assert.equal(
+			canonicalJson(candidateManifest),
+			canonicalJson(currentManifest),
+			"candidate Git tree differs from supplied runtime source",
+		);
 	return candidateManifest;
 }
 
 export function checkEvidence() {
 	const sourceManifest = parseStrictJsonBytes(readFileSync(manifestPath));
-	const sourceManifestDigest = validateRuntimeSourceManifest(
-		sourceManifest,
-		root,
-	);
-	const currentManifest = buildRuntimeSourceManifest(root);
-	assert.equal(
-		canonicalJson(sourceManifest),
-		canonicalJson(currentManifest),
-		"canonical source manifest differs from current checkout",
-	);
 	const hasJson = existsSync(jsonPath);
 	const hasReport = existsSync(reportPath);
 	assert.equal(
@@ -76,12 +68,13 @@ export function checkEvidence() {
 	const evidenceBytes = readFileSync(jsonPath);
 	const reportBytes = readFileSync(reportPath);
 	const evidence = parseStrictJsonBytes(evidenceBytes);
-	checkCandidateProvenance(
-		root,
-		evidence.candidate.commit,
+	const candidate = resolveCandidateCommit(root, evidence.candidate.commit);
+	const sourceManifestDigest = validateRuntimeSourceManifest(
 		sourceManifest,
-		currentManifest,
+		root,
+		(path) => execFileSync("git", ["-C", root, "show", `${candidate}:${path}`]),
 	);
+	checkCandidateProvenance(root, candidate, sourceManifest);
 	validateEvidence(evidence, { sourceManifestDigest, reportBytes });
 	const serialized = `${evidenceBytes.toString("utf8")}\n${reportBytes.toString("utf8")}`;
 	assert.doesNotMatch(

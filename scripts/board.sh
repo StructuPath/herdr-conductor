@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stage 1 B2 context-bound board snapshot. It opens or focuses no unproven pane.
+# Stage 2 passive context-bound lifecycle snapshot; it creates no resource.
 set -uo pipefail
 cd "${HERDR_PLUGIN_ROOT:-$(dirname "$0")/..}" || {
 	echo "herdr-conductor: cannot resolve plugin root"

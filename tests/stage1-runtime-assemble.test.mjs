@@ -11,6 +11,7 @@ import {
 	temp,
 	git,
 	repo,
+	privateStateRoot,
 	context,
 	config,
 	deterministicRandom,
@@ -37,7 +38,13 @@ test("assemble records fixed fork, run-unique full refs/names, and exact observe
 	const journal = readJournals(fixture.stateRoot);
 	assert.deepEqual(
 		journal.map((entry) => entry.operation_type),
-		["integration.bind", "worktree.create", "pane.create", "agent.start"],
+		[
+			"integration.bind",
+			"worktree.create",
+			"task.publish",
+			"pane.create",
+			"agent.start",
+		],
 	);
 	const integration = journal[0].observed_identity;
 	assert.equal(integration.path, repository);
@@ -51,23 +58,27 @@ test("assemble records fixed fork, run-unique full refs/names, and exact observe
 	assert.equal(worktree.fork_sha, fork);
 	assert.equal(worktree.head_sha, fork);
 	assert.equal(worktree.registered, true);
-	const pane = journal[3].observed_identity;
+	const pane = journal[4].observed_identity;
 	assert.equal(pane.workspace_id, fixture.workspace);
 	assert.equal(pane.run_id, fixture.result.run_id);
 	assert.equal(pane.agent_name, fixture.result.workers[0].agent_name);
 	assert.equal(pane.generation, journal[3].subject.generation);
+	assert.notEqual(journal[4].subject.generation, journal[3].subject.generation);
 });
 
 test("assemble retries only Herdr's explicit no-effect pane-busy response", async () => {
 	const repository = repo();
 	const fake = new FakeHerdr();
 	fake.agentBusyRemaining = 1;
+	const stateRoot = privateStateRoot();
 	const result = await assemble({
 		contextJson: context(repository),
-		stateRoot: join(temp("conductor-b2-state-"), "state"),
-		configPath: config(repository, [
-			{ name: "builder", kind: "pi", mode: "write" },
-		]),
+		configPath: config(
+			repository,
+			[{ name: "builder", kind: "pi", mode: "write" }],
+			{},
+			stateRoot,
+		),
 		exec: fake.exec,
 		herdrBin: "fake-herdr",
 		random: deterministicRandom(),
@@ -82,7 +93,7 @@ test("assemble retries only Herdr's explicit no-effect pane-busy response", asyn
 
 test("strict fake Git/Herdr calls see durable intent before every effect and preserve ordering", async () => {
 	const repository = repo();
-	const stateRoot = join(temp("conductor-b2-state-"), "state");
+	const stateRoot = privateStateRoot();
 	const fake = new FakeHerdr();
 	fake.onEffect = () => {
 		const journal = readJournals(stateRoot);
@@ -95,14 +106,18 @@ test("strict fake Git/Herdr calls see durable intent before every effect and pre
 	const result = await assemble({
 		contextJson: context(repository),
 		stateRoot,
-		configPath: config(repository, [
-			{
-				name: "builder",
-				kind: "pi",
-				mode: "write",
-				launch_args: ["--model", "test-model"],
-			},
-		]),
+		configPath: config(
+			repository,
+			[
+				{
+					name: "builder",
+					kind: "pi",
+					mode: "write",
+				},
+			],
+			{},
+			stateRoot,
+		),
 		exec: fake.exec,
 		herdrBin: "fake-herdr",
 		random: deterministicRandom(),
@@ -153,9 +168,6 @@ test("strict fake Git/Herdr calls see durable intent before every effect and pre
 				worker.pane_id,
 				"--timeout",
 				"60000",
-				"--",
-				"--model",
-				"test-model",
 			],
 		},
 		{
@@ -207,7 +219,7 @@ test("strict fakes reject every wrong or unscripted complete command", () => {
 });
 
 test("populated repository/workspace scopes select exactly one run without foreign mutation or probing", async () => {
-	const stateRoot = join(temp("conductor-b2-state-"), "state");
+	const stateRoot = privateStateRoot();
 	const role = { name: "builder", kind: "pi", mode: "write" };
 	const firstRepo = repo();
 	const secondRepo = repo();
@@ -223,7 +235,7 @@ test("populated repository/workspace scopes select exactly one run without forei
 		const run = await assemble({
 			contextJson: context(repository, workspace),
 			stateRoot,
-			configPath: config(repository, [role]),
+			configPath: config(repository, [role], {}, stateRoot),
 			exec: fake.exec,
 			herdrBin: "fake",
 			random: deterministicRandom(seed),
@@ -306,7 +318,7 @@ test("populated repository/workspace scopes select exactly one run without forei
 
 test("malformed, foreign, and stale inputs have zero Herdr effects", async () => {
 	const repository = repo();
-	const stateRoot = join(temp("conductor-b2-state-"), "state");
+	const stateRoot = privateStateRoot();
 	const fake = new FakeHerdr();
 	await expectCodeAsync("invalid_context", () =>
 		assemble({
@@ -320,9 +332,12 @@ test("malformed, foreign, and stale inputs have zero Herdr effects", async () =>
 	const good = await assemble({
 		contextJson: context(repository, "wGood"),
 		stateRoot,
-		configPath: config(repository, [
-			{ name: "reviewer", kind: "codex", mode: "read-only" },
-		]),
+		configPath: config(
+			repository,
+			[{ name: "reviewer", kind: "codex", mode: "read-only" }],
+			{},
+			stateRoot,
+		),
 		exec: fake.exec,
 		herdrBin: "fake",
 		random: deterministicRandom(),
@@ -369,6 +384,39 @@ test("live status is context-bound and marks changed identity foreign_or_stale",
 		herdrBin: "fake",
 	});
 	assert.equal(stale.workers[0].status, "foreign_or_stale");
+});
+
+test("every run-bound action fails closed after configuration digest change", async () => {
+	const fixture = await assembledFixture();
+	const before = fixture.fake.effects;
+	config(
+		fixture.repository,
+		[
+			{
+				name: "builder",
+				kind: "codex",
+				mode: "write",
+				assignment: {
+					title: "Changed after assembly",
+					mission: "Must fail closed",
+					acceptance_criteria: [],
+					owned_paths: ["src"],
+					forbidden_paths: [],
+					required_commands: [],
+				},
+			},
+		],
+		{},
+		fixture.stateRoot,
+	);
+	expectCode("stale_task", () =>
+		readStatus({
+			contextJson: context(fixture.repository, fixture.workspace),
+			exec: fixture.fake.exec,
+			herdrBin: "fake",
+		}),
+	);
+	assert.equal(fixture.fake.effects, before);
 });
 
 test("foreign anchor and cross-repository symlink roots have zero effects", async () => {
@@ -457,7 +505,7 @@ test("foreign anchor and cross-repository symlink roots have zero effects", asyn
 	assert.equal(existsSync(preexistingState), false);
 });
 
-test("strict config rejects unused legacy fields and absolute worktree roots", async () => {
+test("Stage 2 config rejects unused legacy fields and absolute worktree roots", async () => {
 	for (const overrides of [
 		{ team: "legacy" },
 		{ base_branch: "main" },
@@ -465,7 +513,7 @@ test("strict config rejects unused legacy fields and absolute worktree roots", a
 	]) {
 		const repository = repo();
 		const fake = new FakeHerdr();
-		await expectCodeAsync("invalid_config", () =>
+		await expectCodeAsync("invalid_contract", () =>
 			assemble({
 				contextJson: context(repository),
 				stateRoot: join(temp("conductor-b2-state-"), "state"),
@@ -490,6 +538,7 @@ test("pane and agent cwd plus foreground_cwd are independently required", async 
 		["agent", "foreground_cwd"],
 	]) {
 		const repository = repo();
+		const stateRoot = privateStateRoot();
 		const fake = new FakeHerdr();
 		const original = fake.exec;
 		fake.exec = (command, args) => {
@@ -509,10 +558,12 @@ test("pane and agent cwd plus foreground_cwd are independently required", async 
 		await expectCodeAsync("recovery_required", () =>
 			assemble({
 				contextJson: context(repository),
-				stateRoot: join(temp("conductor-b2-state-"), "state"),
-				configPath: config(repository, [
-					{ name: "reviewer", kind: "codex", mode: "read-only" },
-				]),
+				configPath: config(
+					repository,
+					[{ name: "reviewer", kind: "codex", mode: "read-only" }],
+					{},
+					stateRoot,
+				),
 				exec: fake.exec,
 				herdrBin: "fake",
 				random: deterministicRandom(),

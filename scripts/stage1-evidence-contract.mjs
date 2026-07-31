@@ -157,7 +157,11 @@ export function buildCandidateRuntimeSourceManifest(root, candidate) {
 	);
 }
 
-export function validateRuntimeSourceManifest(manifest, root) {
+export function validateRuntimeSourceManifest(
+	manifest,
+	root,
+	readSource = (path) => readFileSync(join(root, path)),
+) {
 	exactKeys(
 		manifest,
 		["document_type", "schema_version", "files"],
@@ -178,7 +182,7 @@ export function validateRuntimeSourceManifest(manifest, root) {
 		digest(entry.sha256, `source manifest digest ${entry.path}`);
 		assert.equal(
 			entry.sha256,
-			sha256(readFileSync(join(root, entry.path))),
+			sha256(readSource(entry.path)),
 			`${entry.path} differs from the attested runtime source`,
 		);
 	}

@@ -10,6 +10,11 @@ export const OPERATION_POLICIES = Object.freeze({
 		prerequisite: null,
 		observedIdentity: "worktree",
 	}),
+	"task.publish": Object.freeze({
+		subjectKind: "task",
+		prerequisite: "worktree.create",
+		observedIdentity: null,
+	}),
 	"pane.create": Object.freeze({
 		subjectKind: "pane",
 		prerequisite: null,
@@ -20,6 +25,36 @@ export const OPERATION_POLICIES = Object.freeze({
 		prerequisite: null,
 		observedIdentity: "pane",
 	}),
+	"report.harvest": Object.freeze({
+		subjectKind: "report",
+		prerequisite: "task.publish",
+		observedIdentity: null,
+	}),
+	"report.reject": Object.freeze({
+		subjectKind: "report",
+		prerequisite: "task.publish",
+		observedIdentity: "report-rejection",
+	}),
+	"integration.reconcile": Object.freeze({
+		subjectKind: "git",
+		prerequisite: null,
+		observedIdentity: "stage2-integration",
+	}),
+	"integration.harvest": Object.freeze({
+		subjectKind: "git",
+		prerequisite: "integration.reconcile",
+		observedIdentity: "stage2-integration",
+	}),
+	"gate-source.create": Object.freeze({
+		subjectKind: "snapshot",
+		prerequisite: "integration.harvest",
+		observedIdentity: "gate-source",
+	}),
+	"run.stand-down.begin": Object.freeze({
+		subjectKind: "run",
+		prerequisite: null,
+		observedIdentity: "stand-down",
+	}),
 	"git.merge": Object.freeze({
 		subjectKind: "worktree",
 		prerequisite: "worktree.create",
@@ -27,7 +62,7 @@ export const OPERATION_POLICIES = Object.freeze({
 	}),
 	"pane.close": Object.freeze({
 		subjectKind: "pane",
-		prerequisite: "agent.start",
+		prerequisite: "pane.create",
 		observedIdentity: null,
 	}),
 	"run.archive": Object.freeze({

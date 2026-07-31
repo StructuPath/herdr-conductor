@@ -1,6 +1,6 @@
 {
   "name": "herdr-conductor",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -8,11 +8,18 @@
   },
   "scripts": {
     "test": "node --test",
+    "test:stage2": "node --test tests/task-report-schema.test.mjs tests/report-publisher.test.mjs tests/stage2-*.test.mjs tests/state-kernel.test.mjs tests/stage1-runtime-*.test.mjs",
     "check:shell": "bash -n scripts/*.sh",
+    "check:shellcheck": "shellcheck --shell=bash scripts/*.sh",
+    "check:python": "python3 -m py_compile scripts/harness-fs-helper.py",
+    "check:workflow": "go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7",
     "check:manifest": "node scripts/check-manifest.mjs",
     "check:docs": "node scripts/check-docs.mjs",
     "check:evidence": "node scripts/check-evidence-inventory.mjs && node scripts/check-b0-identity-evidence.mjs && node scripts/check-stage1-live-smoke-evidence.mjs",
-    "smoke:stage1:live": "node scripts/run-stage1-live-smoke.mjs",
-    "check": "npm test && npm run check:shell && npm run check:manifest && npm run check:docs && npm run check:evidence"
+    "check:release": "node scripts/check-stage2-live-evidence.mjs",
+    "report:publish": "node scripts/report-publisher.mjs publish",
+    "evidence:stage2:live": "node scripts/run-stage2-live-evidence.mjs",
+    "evidence:stage2:finalize": "node scripts/finalize-stage2-live-evidence.mjs",
+    "check": "npm test && npm run check:shell && npm run check:python && npm run check:manifest && npm run check:docs && npm run check:evidence"
   }
 }
