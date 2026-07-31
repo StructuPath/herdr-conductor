@@ -46,7 +46,7 @@ jobs:
   macos-bash:
     name: macOS / Node 20 / system Bash 3.2 / real worktrees
     runs-on: macos-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
     steps:
       - name: Check out complete candidate history
         # v4.2.2

@@ -538,6 +538,7 @@ test("pane and agent cwd plus foreground_cwd are independently required", async 
 		["agent", "foreground_cwd"],
 	]) {
 		const repository = repo();
+		const stateRoot = privateStateRoot();
 		const fake = new FakeHerdr();
 		const original = fake.exec;
 		fake.exec = (command, args) => {
@@ -557,10 +558,12 @@ test("pane and agent cwd plus foreground_cwd are independently required", async 
 		await expectCodeAsync("recovery_required", () =>
 			assemble({
 				contextJson: context(repository),
-				stateRoot: join(temp("conductor-b2-state-"), "state"),
-				configPath: config(repository, [
-					{ name: "reviewer", kind: "codex", mode: "read-only" },
-				]),
+				configPath: config(
+					repository,
+					[{ name: "reviewer", kind: "codex", mode: "read-only" }],
+					{},
+					stateRoot,
+				),
 				exec: fake.exec,
 				herdrBin: "fake",
 				random: deterministicRandom(),
