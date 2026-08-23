@@ -70,6 +70,26 @@ export const OPERATION_POLICIES = Object.freeze({
 		prerequisite: null,
 		observedIdentity: null,
 	}),
+	"apply.preview": Object.freeze({
+		subjectKind: "apply",
+		prerequisite: "integration.harvest",
+		observedIdentity: "stage3-preview",
+	}),
+	"approval.record": Object.freeze({
+		subjectKind: "approval",
+		prerequisite: "apply.preview",
+		observedIdentity: "stage3-approval",
+	}),
+	"approval.consume": Object.freeze({
+		subjectKind: "approval",
+		prerequisite: "approval.record",
+		observedIdentity: "stage3-consumption",
+	}),
+	"apply.publish": Object.freeze({
+		subjectKind: "apply",
+		prerequisite: "approval.consume",
+		observedIdentity: "stage3-apply",
+	}),
 });
 
 export const OPERATION_TYPES = Object.freeze(Object.keys(OPERATION_POLICIES));
