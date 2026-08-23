@@ -21,5 +21,7 @@ export {
 export {
 	archiveActiveRun,
 	inspectArchiveUncertainty,
+	loadUncertainApplyRun,
 	performJournaledOperation,
+	resolveUncertainApplyPublication,
 } from "./operation-journal.mjs";
