@@ -200,6 +200,72 @@ test("configuration v2 is closed and artifact allowlists are empty", () => {
 			),
 		),
 	);
+	code("invalid_contract", () =>
+		parseStage2ConfigBytes(
+			Buffer.from(canonicalJson({ ...config, apply: null })),
+		),
+	);
+});
+
+test("configuration v3 requires one explicit apply member", () => {
+	const v3 = {
+		version: 3,
+		state_root: { kind: "default" },
+		worktree_root: ".conductor-worktrees",
+		apply: { target_ref: "refs/heads/release" },
+		roles: [
+			{
+				name: "builder",
+				contract_role: "builder",
+				kind: "codex",
+				mode: "write",
+				assignment,
+				validator_artifacts: [],
+			},
+		],
+	};
+	assert.equal(
+		parseStage2ConfigBytes(Buffer.from(canonicalJson(v3))).apply.target_ref,
+		"refs/heads/release",
+	);
+	assert.equal(
+		parseStage2ConfigBytes(
+			Buffer.from(canonicalJson({ ...v3, apply: null })),
+		).apply,
+		null,
+	);
+	const { apply: _apply, ...withoutApply } = v3;
+	code("invalid_contract", () =>
+		parseStage2ConfigBytes(Buffer.from(canonicalJson(withoutApply))),
+	);
+	code("invalid_contract", () =>
+		parseStage2ConfigBytes(
+			Buffer.from(canonicalJson({ ...v3, apply: {} })),
+		),
+	);
+	for (const targetRef of [
+		"main",
+		"refs//heads/release",
+		"refs/heads/../release",
+		"refs/heads/./release",
+		"refs\\heads\\release",
+		"refs/heads/re lease",
+	])
+		code("invalid_contract", () =>
+			parseStage2ConfigBytes(
+				Buffer.from(canonicalJson({ ...v3, apply: { target_ref: targetRef } })),
+			),
+		);
+	code("invalid_contract", () =>
+		parseStage2ConfigBytes(
+			Buffer.from(
+				canonicalJson({
+					...v3,
+					apply: { target_ref: "refs/heads/release", mode: "fast-forward" },
+				}),
+			),
+		),
+	);
 });
 
 test("task and report digests are domain separated and validated", () => {
