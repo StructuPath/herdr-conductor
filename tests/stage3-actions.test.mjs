@@ -20,6 +20,8 @@ import {
 	expectCodeAsync,
 	git,
 	publishWorkerReport,
+	readStatus,
+	standDown,
 } from "./stage1-runtime-helpers.mjs";
 
 const APPLY_TARGET = "refs/heads/release";
@@ -277,6 +279,118 @@ test("a crash before the CAS voids the attempt and recovery re-arms apply", asyn
 		harvested.integration.final_sha,
 	);
 	assert.equal(applyCasCount(fixture), 1);
+});
+
+test("a gated run previews byte-ordered verdicts, applies, and archives", async () => {
+	const fixture = await assembledFixture({
+		roles: [
+			...producerRoles(),
+			{ name: "reviewer", contract_role: "reviewer", kind: "codex", mode: "read-only" },
+			{ name: "validator", contract_role: "validator", kind: "codex", mode: "gated" },
+		],
+		seed: 11,
+		configOverrides: structuredClone(applyOverrides),
+	});
+	git(fixture.repository, "update-ref", APPLY_TARGET, fixture.result.fork_sha);
+	const producer = fixture.result.workers[0];
+	mkdirSync(join(producer.cwd, "src"));
+	writeFileSync(join(producer.cwd, "src", "feature.mjs"), "export default 1;\n");
+	git(producer.cwd, "add", "src/feature.mjs");
+	git(producer.cwd, "commit", "-qm", "feature");
+	await publishWorkerReport(fixture, producer);
+	const provisioned = await reconcile(
+		invocation(fixture, { random: deterministicRandom(60) }),
+	);
+	assert.equal(provisioned.lifecycle, "gate_waiting_reports");
+	await expectCodeAsync("operation_conflict", () =>
+		preview(invocation(fixture)),
+	);
+	for (const worker of provisioned.gate_workers)
+		await publishWorkerReport(fixture, worker);
+	const collected = await reconcile(
+		invocation(fixture, { random: deterministicRandom(61) }),
+	);
+	assert.equal(collected.lifecycle, "gate_reports_collected");
+	const status = readStatus(invocation(fixture));
+	assert.equal(status.lifecycle, "gate_reports_collected");
+	assert.deepEqual(
+		[...status.legal_next_operations],
+		["apply.preview", "run.stand-down.begin"],
+	);
+	const previewed = await preview(invocation(fixture));
+	assert.deepEqual(
+		previewed.preview.gates.map(
+			({ role_name, contract_role, result_kind, verdict, status: gateStatus }) => [
+				role_name,
+				contract_role,
+				result_kind,
+				verdict,
+				gateStatus,
+			],
+		),
+		[
+			["reviewer", "reviewer", "review", "approve", "completed"],
+			["validator", "validator", "validation", "pass", "completed"],
+		],
+	);
+	await record(fixture, receiptFor(previewed, "approve"));
+	const applied = await applyStage3(invocation(fixture));
+	assert.equal(applied.lifecycle, "applied");
+	const appliedStatus = readStatus(invocation(fixture));
+	assert.equal(appliedStatus.lifecycle, "applied");
+	assert.deepEqual(
+		[...appliedStatus.legal_next_operations],
+		["run.stand-down.begin"],
+	);
+	const stood = await standDown(
+		invocation(fixture, { reason: "normal_completion" }),
+	);
+	assert.equal(stood.archived, true);
+	assert.equal(
+		git(fixture.repository, "rev-parse", APPLY_TARGET),
+		collected.integration.final_sha,
+	);
+});
+
+test("a blocked gate report and a foreign workspace refuse preview", async () => {
+	const fixture = await assembledFixture({
+		roles: [
+			...producerRoles(),
+			{ name: "validator", contract_role: "validator", kind: "codex", mode: "gated" },
+		],
+		seed: 12,
+		configOverrides: structuredClone(applyOverrides),
+	});
+	git(fixture.repository, "update-ref", APPLY_TARGET, fixture.result.fork_sha);
+	const producer = fixture.result.workers[0];
+	mkdirSync(join(producer.cwd, "src"));
+	writeFileSync(join(producer.cwd, "src", "feature.mjs"), "export default 1;\n");
+	git(producer.cwd, "add", "src/feature.mjs");
+	git(producer.cwd, "commit", "-qm", "feature");
+	await publishWorkerReport(fixture, producer);
+	const provisioned = await reconcile(
+		invocation(fixture, { random: deterministicRandom(70) }),
+	);
+	assert.equal(provisioned.lifecycle, "gate_waiting_reports");
+	await publishWorkerReport(fixture, provisioned.gate_workers[0], {
+		status: "blocked",
+		result: null,
+	});
+	const collected = await reconcile(
+		invocation(fixture, { random: deterministicRandom(71) }),
+	);
+	assert.equal(collected.lifecycle, "gate_reports_collected");
+	await expectCodeAsync("operation_conflict", () =>
+		preview(invocation(fixture)),
+	);
+	await expectCodeAsync("bookkeeping_unknown", () =>
+		preview({
+			contextJson: context(fixture.repository, "wForeign"),
+			exec: fixture.fake.exec,
+			herdrBin: "fake",
+		}),
+	);
+	assert.equal(applyCasCount(fixture), 0);
 });
 
 test("a crash after the CAS resolves to applied without a second CAS", async () => {
