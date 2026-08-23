@@ -208,10 +208,23 @@ test("approval and apply refuse a drifted target with zero CAS", async () => {
 		APPLY_TARGET,
 		drifted.harvested.integration.final_sha,
 	);
-	await expectCodeAsync("stale_source", () =>
-		applyStage3(invocation(drifted.fixture)),
-	);
+	const voided = await applyStage3(invocation(drifted.fixture));
+	assert.equal(voided.lifecycle, "apply_voided");
+	assert.equal(voided.apply.outcome, "unapplied");
+	assert.equal(voided.apply.cas_count, 0);
 	assert.equal(applyCasCount(drifted.fixture), 0);
+	git(
+		drifted.fixture.repository,
+		"update-ref",
+		APPLY_TARGET,
+		drifted.harvested.integration.starting_sha,
+	);
+	const reopened = await preview(invocation(drifted.fixture));
+	assert.equal(reopened.lifecycle, "apply_previewed");
+	await record(drifted.fixture, receiptFor(reopened, "approve"));
+	const applied = await applyStage3(invocation(drifted.fixture));
+	assert.equal(applied.lifecycle, "applied");
+	assert.equal(applyCasCount(drifted.fixture), 1);
 });
 
 test("stale receipts and foreign digests are refused exactly", async () => {

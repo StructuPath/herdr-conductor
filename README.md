@@ -86,10 +86,14 @@ attended four-operation attempt:
   unauthenticated same-UID operator records, never signatures or authorization
   proof.
 - `apply` first journals a durable consumption marker spending the receipt
-  before any Git effect, then moves the configured target ref with exactly zero
-  or one double-preflighted compare-and-swap from the previewed SHA to the
-  integrated final SHA. A spent receipt never authorizes a second
-  compare-and-swap; a failed preflight performs zero target CAS.
+  before any Git effect, then publishes the attempt's single outcome: a live
+  target moves with exactly one double-preflighted compare-and-swap from the
+  previewed SHA to the integrated final SHA, and a drifted target records a
+  durable `unapplied` outcome with zero target CAS, closing the attempt so the
+  run can always progress. A spent receipt never authorizes a second
+  compare-and-swap. The attended `apply` action may reclaim the repository
+  mutation lock only from a dead process that held exactly its own apply
+  operation id; every other retained lock keeps refusing.
 - A crash between consumption and publication observation leaves the run
   apply-uncertain, and every other surface keeps refusing with
   `recovery_required`. The attended `apply` action alone resolves it by exact

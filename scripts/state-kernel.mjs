@@ -13,6 +13,7 @@ export {
 	copyExclusivePrivateBytes,
 	readPrivateJson,
 	readStablePrivateBytes,
+	reclaimDeadRepositoryLock,
 	scanExactDirectory,
 	releaseRepositoryLock,
 	resolveGitCommonDirectory,

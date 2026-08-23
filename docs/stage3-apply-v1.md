@@ -151,16 +151,19 @@ tokens exist so no free-text claim can masquerade as broader authority.
 `apply` is an attended action. With an approve receipt observed for the
 newest attempt and no uncertain Stage 3 entries, it:
 
-1. revalidates complete strict authority and preview liveness (integration
-   ref still `final_sha`; apply ref still `starting_sha`; configuration digest
-   unchanged; apply ref still not checked out anywhere);
+1. revalidates complete strict journal, configuration, and receipt-binding
+   authority;
 2. journals `approval.consume`, whose observed identity binds the approval
    journal entry digest and the attempt generation — the receipt is spent
    before any Git effect and is never reusable, whatever follows;
-3. journals `apply.publish`, whose effect performs the single
-   compare-and-swap `git update-ref <target_ref> <final_sha> <starting_sha>`
-   after one final in-effect preflight, then revalidates that the ref
-   resolves to exactly `final_sha`.
+3. journals `apply.publish`, whose effect decides the attempt's single
+   durable outcome: a live target (integration ref still `final_sha`, apply
+   ref still `starting_sha`, not checked out anywhere) moves through the
+   single compare-and-swap
+   `git update-ref <target_ref> <final_sha> <starting_sha>` after one final
+   in-effect preflight and is revalidated at exactly `final_sha`; a drifted
+   target records outcome `unapplied` with zero CAS, closing the attempt so
+   the run always progresses.
 
 The apply outcome document is the observed identity:
 
@@ -170,8 +173,8 @@ The apply outcome document is the observed identity:
 - `cas_count`: `1` for `applied`, `0` for `unapplied`
 - `outcome`: `"applied"` or `"unapplied"`
 
-Any preflight failure before the CAS performs zero target CAS and fails
-closed; the attempt's receipt is already consumed and a fresh attempt (new
+A drift observed before the CAS performs zero target CAS and durably closes
+the attempt; its receipt is already consumed and a fresh attempt (new
 preview, new receipt) is required. The action never retries the CAS, never
 force-updates, never touches any other ref, never pushes, and never deletes
 or rewrites anything.
@@ -181,8 +184,11 @@ or rewrites anything.
 A crash after `approval.consume` is observed but while `apply-publish-<g>` is
 non-observed (phase `intent` or `needs_attention`) leaves the run
 `apply_uncertain`. Every other Conductor surface keeps refusing with
-`recovery_required`. The attended `apply` action alone may resolve it, under
-the lock, by exact re-observation of the target ref:
+`recovery_required`. The attended `apply` action alone may resolve it: it
+first reclaims the repository mutation lock when — and only when — the
+retained owner process is dead and held exactly the apply action's own
+operation id (any other retained lock keeps refusing), then resolves under
+the lock by exact re-observation of the target ref:
 
 - ref resolves to exactly `final_sha` → the effect completed; the entry is
   transitioned to `observed` with outcome `applied`, `cas_count: 1`;

@@ -50,6 +50,7 @@ import {
 	openRepositoryStore,
 	performJournaledOperation,
 	readStablePrivateBytes,
+	reclaimDeadRepositoryLock,
 	releaseRepositoryLock,
 	resolveGitCommonDirectory,
 	resolveUncertainApplyPublication,
@@ -2563,8 +2564,7 @@ export async function applyStage3({
 			"workspace_cwd must be the canonical repository root",
 		);
 	requireStage3Target(config);
-	refuseDeadRepositoryLock(store);
-	const lock = acquireRepositoryLock(store, {
+	const lock = reclaimDeadRepositoryLock(store, {
 		operationId: `apply-${sha256(context.workspaceId).slice(0, 24)}`,
 		fault,
 	});
@@ -2626,7 +2626,6 @@ export async function applyStage3({
 				"bookkeeping_unknown",
 				"approval receipt does not bind the previewed authority",
 			);
-		stage3LiveApplyObservation(store, previewIdentity, exec);
 		const consumptionIdentity = validateStage3ConsumptionIdentity(
 			{
 				document_type: "herdr-conductor-stage3-consumption",
@@ -2654,13 +2653,10 @@ export async function applyStage3({
 			},
 			requestDigest: sha256(consumptionIdentity),
 			fault: operationFault(fault, "approval.consume"),
-			effect: async () => {
-				stage3LiveApplyObservation(store, previewIdentity, exec);
-				return {
-					resultDigest: sha256(consumptionIdentity),
-					observedIdentity: consumptionIdentity,
-				};
-			},
+			effect: async () => ({
+				resultDigest: sha256(consumptionIdentity),
+				observedIdentity: consumptionIdentity,
+			}),
 		});
 		active = loadActiveRun(store, { workspaceId: context.workspaceId });
 		const consumed = stage3AttemptAuthority(active);
@@ -2669,29 +2665,30 @@ export async function applyStage3({
 			!consumed.consumptionEntry
 		)
 			fail("bookkeeping_unknown", "consumption authority is missing");
-		stage3LiveApplyObservation(store, previewIdentity, exec);
 		const publishRequest = stage3PublishRequest(
 			previewIdentity,
 			consumed.consumptionEntry.entry_digest,
 		);
-		const applyIdentity = validateStage3ApplyIdentity(
-			{
-				document_type: "herdr-conductor-stage3-apply",
-				schema_version: 1,
-				repository_key: store.repository.key,
-				workspace_id: active.state.workspace_id,
-				run_id: active.state.run_id,
-				run_generation: active.state.generation,
-				attempt_generation: attempt.generation,
-				consumption_entry_digest: consumed.consumptionEntry.entry_digest,
-				target_ref: previewIdentity.apply.target_ref,
-				expected_sha: previewIdentity.apply.observed_sha,
-				final_sha: previewIdentity.apply.final_sha,
-				cas_count: 1,
-				outcome: "applied",
-			},
-			"stage3 apply",
-		);
+		const applyIdentityFor = (outcome) =>
+			validateStage3ApplyIdentity(
+				{
+					document_type: "herdr-conductor-stage3-apply",
+					schema_version: 1,
+					repository_key: store.repository.key,
+					workspace_id: active.state.workspace_id,
+					run_id: active.state.run_id,
+					run_generation: active.state.generation,
+					attempt_generation: attempt.generation,
+					consumption_entry_digest: consumed.consumptionEntry.entry_digest,
+					target_ref: previewIdentity.apply.target_ref,
+					expected_sha: previewIdentity.apply.observed_sha,
+					final_sha: previewIdentity.apply.final_sha,
+					cas_count: outcome === "applied" ? 1 : 0,
+					outcome,
+				},
+				"stage3 apply",
+			);
+		let publishedOutcome = null;
 		await performJournaledOperation(lock, {
 			workspaceId: context.workspaceId,
 			runId: active.state.run_id,
@@ -2702,23 +2699,38 @@ export async function applyStage3({
 			requestDigest: sha256(publishRequest),
 			fault: operationFault(fault, "apply.publish"),
 			effect: async () => {
-				publishStage3ApplyCas({
-					repository: store.repositoryRoot,
-					targetRef: previewIdentity.apply.target_ref,
-					expectedSha: previewIdentity.apply.observed_sha,
-					finalSha: previewIdentity.apply.final_sha,
-					preflight: () =>
-						stage3LiveApplyObservation(store, previewIdentity, exec),
-					exec,
-					fault: operationFault(fault, "apply.publish"),
-				});
+				let live = true;
+				try {
+					stage3LiveApplyObservation(store, previewIdentity, exec);
+				} catch (error) {
+					if (
+						!(error instanceof StateKernelError) ||
+						!["stale_source", "foreign_or_stale"].includes(error.code)
+					)
+						throw error;
+					live = false;
+				}
+				if (live)
+					publishStage3ApplyCas({
+						repository: store.repositoryRoot,
+						targetRef: previewIdentity.apply.target_ref,
+						expectedSha: previewIdentity.apply.observed_sha,
+						finalSha: previewIdentity.apply.final_sha,
+						preflight: () =>
+							stage3LiveApplyObservation(store, previewIdentity, exec),
+						exec,
+						fault: operationFault(fault, "apply.publish"),
+					});
+				publishedOutcome = live ? "applied" : "unapplied";
+				const identity = applyIdentityFor(publishedOutcome);
 				return {
-					resultDigest: sha256(applyIdentity),
-					observedIdentity: applyIdentity,
+					resultDigest: sha256(identity),
+					observedIdentity: identity,
 				};
 			},
 			validateBeforeResultPublication: async () => {
 				if (
+					publishedOutcome === "applied" &&
 					gitLine(exec, store.repositoryRoot, [
 						"rev-parse",
 						previewIdentity.apply.target_ref,
@@ -2732,14 +2744,13 @@ export async function applyStage3({
 		});
 		active = loadActiveRun(store, { workspaceId: context.workspaceId });
 		const published = stage3AttemptAuthority(active);
-		if (
-			published?.publicationEntry?.observed_identity?.outcome !== "applied"
-		)
+		const outcome = published?.publicationEntry?.observed_identity?.outcome;
+		if (outcome !== "applied" && outcome !== "unapplied")
 			fail("bookkeeping_unknown", "published apply authority is missing");
 		return {
 			run_id: active.state.run_id,
 			workspace_id: context.workspaceId,
-			lifecycle: "applied",
+			lifecycle: outcome === "applied" ? "applied" : "apply_voided",
 			apply: published.publicationEntry.observed_identity,
 			replayed: false,
 			resolved: resolution !== null,

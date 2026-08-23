@@ -39,9 +39,13 @@ journal entries, not signatures, credentials, or delegated authority.
 - Stage 3 preview performs zero Git mutation; an approve receipt is durably
   consumed before any apply effect and never authorizes a second
   compare-and-swap; the apply moves exactly one configured local ref by
-  fast-forward from its previewed SHA. An uncertain apply publication is
+  fast-forward from its previewed SHA, or durably records an unapplied outcome
+  with zero CAS when the target drifted. An uncertain apply publication is
   resolved only by attended exact re-observation of that ref, and any foreign
-  observation fails closed permanently.
+  observation fails closed permanently. The attended apply may reclaim a
+  repository lock only from a dead process holding exactly its own apply
+  operation id; the pid-liveness check remains cooperative, not
+  authentication.
 - No product cleanup, prune, migration, expiry, adoption, suite adapter,
   unattended launch, Browser promotion, site repin, push, remote publication,
   or deployment is implemented. Ambiguous-operation resolution exists only for
