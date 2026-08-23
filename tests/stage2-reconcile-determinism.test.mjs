@@ -68,10 +68,11 @@ test("synthetic integration commits ignore ambient identity, clock, and timezone
 			repo,
 			"show",
 			"-s",
-			"--format=%an <%ae>|%aI|%cn <%ce>|%cI|%B",
+			"--date=raw",
+			"--format=%an <%ae>|%ad|%cn <%ce>|%cd|%B",
 			first.finalSha,
 		),
-		`Herdr Conductor <conductor@local.invalid>|2000-01-01T00:00:00Z|Herdr Conductor <conductor@local.invalid>|2000-01-01T00:00:00Z|Conductor Stage 2 integrate builder ${source}`,
+		`Herdr Conductor <conductor@local.invalid>|946684800 +0000|Herdr Conductor <conductor@local.invalid>|946684800 +0000|Conductor Stage 2 integrate builder ${source}`,
 	);
 	let preflights = 0;
 	const published = publishIntegrationCas({
