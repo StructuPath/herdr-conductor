@@ -1,13 +1,14 @@
 # Herdr Conductor
 
 > [!IMPORTANT]
-> Conductor `0.3.0` implements **Stage 2 attended strict task/report contracts**
-> on exactly Herdr `0.7.5`, protocol `17`, API schema `1`. An operator explicitly
-> invokes every transition. This is cooperative same-UID coordination, not
-> authentication, sandboxing, unattended orchestration, or Stage 3
-> approval/apply.
+> Conductor `0.4.0` implements **Stage 2 attended strict task/report contracts**
+> and the **Stage 3 attended single-ref apply** on exactly Herdr `0.7.5`,
+> protocol `17`, API schema `1`. An operator explicitly invokes every
+> transition, records every approval receipt, and resolves every apply
+> uncertainty. This is cooperative same-UID coordination, not authentication,
+> sandboxing, or unattended orchestration.
 
-Conductor coordinates task-bound producer and gate roles through five installed
+Conductor coordinates task-bound producer and gate roles through seven installed
 Herdr actions and one passive board pane. One runtime authority in
 `scripts/stage1-runtime.mjs` owns the complete lifecycle. It preserves the
 Stage 1 physical repository/workspace/run identity, hash-chained journal,
@@ -63,10 +64,49 @@ writable report outboxes remain outside source. This is an ordinary-write and
 review boundary, not malicious same-UID enforcement. Gate reports require empty
 changed paths and artifacts and exhaustive worker-asserted requirement results.
 
+## Stage 3 apply
+
+With configuration v3 declaring a non-null `apply.target_ref`, a run whose gate
+reports are collected (or a gateless harvested run) may be applied through an
+attended four-operation attempt:
+
+- `preview` journals one zero-effect document binding the exact run,
+  integration entry, byte-ordered completed gate assertions, and the observed
+  apply target. The target ref must exist, must differ from the integration
+  branch, must not be checked out in any worktree, and must sit exactly at the
+  run's integration base, so the proposed move is a pure fast-forward with a
+  non-empty rename-free change summary. Any drift fails closed with zero
+  recorded authority and zero Git mutation.
+- The operator records one approval receipt through `npm run apply:approve`,
+  which accepts at most 16384 canonical bytes on stdin, requires the fixed
+  approve/reject statement token bound to the exact preview journal entry
+  digest, and stores the receipt only in the hash-chained journal. An approve
+  receipt requires the preview to still be live; a reject receipt records on a
+  drifted target too, so an attempt can always close. Approval receipts remain
+  unauthenticated same-UID operator records, never signatures or authorization
+  proof.
+- `apply` first journals a durable consumption marker spending the receipt
+  before any Git effect, then moves the configured target ref with exactly zero
+  or one double-preflighted compare-and-swap from the previewed SHA to the
+  integrated final SHA. A spent receipt never authorizes a second
+  compare-and-swap; a failed preflight performs zero target CAS.
+- A crash between consumption and publication observation leaves the run
+  apply-uncertain, and every other surface keeps refusing with
+  `recovery_required`. The attended `apply` action alone resolves it by exact
+  re-observation of the target ref: exactly the final SHA is applied, exactly
+  the previewed SHA voids the attempt, and any other observation fails closed
+  permanently. Resolution exists only for the apply publication; no other
+  operation gains it.
+
+A closed attempt (reject receipt or voided publication) permits one fresh
+preview; an applied attempt is terminal; at most 8 attempts may exist.
+Configuration v2 runs never enter Stage 3 states.
+
 Lifecycle scanning derives one disjoint state or fails with
 `bookkeeping_unknown`/`recovery_required`. Stable states cover provisioning,
 waiting reports, terminal rejection, nonprogressable delivery, ready/integrated
-results, gate provisioning/waiting/refusal/collection, every stand-down close
+results, gate provisioning/waiting/refusal/collection, apply
+preview/approval/consumption/void/applied, every stand-down close
 prefix, and archive. Attended stand-down is available from every stable state,
 binds a deterministic exact pane close set, closes only the next full live tuple,
 and archives only after every close is observed. It never removes product
@@ -75,11 +115,16 @@ artifacts.
 
 ## Configuration
 
-Commit `.herdr-conductor.json` in the invoking repository:
+Commit `.herdr-conductor.json` in the invoking repository. Configuration v3 is
+exactly v2 plus one required `apply` member — `null` to declare Stage 3
+disabled, or an exact `{ "target_ref": "refs/heads/…" }` object naming the
+single apply target. Configuration v2 remains accepted with unchanged meaning
+and no Stage 3 operations:
 
 ```json
 {
-  "version": 2,
+  "version": 3,
+  "apply": { "target_ref": "refs/heads/release" },
   "state_root": { "kind": "default" },
   "worktree_root": ".conductor-worktrees",
   "roles": [
@@ -148,7 +193,10 @@ herdr plugin action invoke stand-down --plugin structupath.conductor
 `assemble` returns exact task paths, source roots, outbox slots, and publisher
 commands. A worker sends canonical report bytes to that publisher through stdin.
 `harvest` is explicitly invoked and attended; producer report collection and
-gate report collection may require separate invocations. Board/status are passive
+gate report collection may require separate invocations. `preview` prints the
+journaled preview document, its entry digest, and the exact approval command;
+`apply` consumes the recorded approve receipt and performs or resolves the
+single target compare-and-swap. Board/status are passive
 and infer no missing input. `stand-down` closes only panes that were observed;
 each exact workspace/pane/cwd/generation identity must still match, and the full
 attached-agent tuple is also required when an agent was observed.
@@ -189,7 +237,8 @@ bash -n scripts/*.sh
 shellcheck --shell=bash scripts/*.sh
 python3 -m py_compile scripts/harness-fs-helper.py
 go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
-node --test tests/stage1-runtime-*.test.mjs tests/stage2-*.test.mjs
+node --test tests/stage1-runtime-*.test.mjs tests/stage2-*.test.mjs \
+  tests/stage3-*.test.mjs
 ```
 
 The live harness requires an explicit candidate, review record, empty canonical
@@ -221,15 +270,19 @@ npm run evidence:stage2:finalize -- \
   TOCTOU windows.
 - Worker results are unauthenticated assertions. The retained external-review
   record uses only fixed independent-human/independence/GO tokens and requires
-  zero findings; those closed assertions remain unauthenticated.
+  zero findings; those closed assertions remain unauthenticated. Stage 3
+  approval receipts remain unauthenticated same-UID operator records.
 - Product resources are retained indefinitely and consume cumulative disk.
-- A crash after a possible external effect remains uncertain; Stage 2 has no
-  ambiguous-operation recovery or replay.
+- A crash after a possible external pane/agent effect remains uncertain; Stage
+  2 has no ambiguous-operation recovery or replay. The only resolvable
+  uncertainty is the Stage 3 apply publication, whose single-ref outcome is
+  exactly observable; resolution exists only for the apply publication.
 - Guard is observational and cannot prove prevention. Conductor does not invoke
   Swarm and makes no Browser, suite-adapter, site, sandbox, promotion, or
   unattended-readiness claim.
-- Stage 3 preview, approval, approval consumption, apply, and recovery are not
-  implemented.
+- Stage 3 applies exactly one configured local ref by fast-forward. It does not
+  push, publish remotely, deploy, tag, release, delegate approval, or apply
+  multiple refs.
 
 See [SECURITY.md](SECURITY.md), [CONTRIBUTING.md](CONTRIBUTING.md), and
 [docs/private-state-v1.md](docs/private-state-v1.md) for the authoritative

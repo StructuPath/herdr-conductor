@@ -1,6 +1,6 @@
 {
   "name": "herdr-conductor",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -8,7 +8,7 @@
   },
   "scripts": {
     "test": "node --test",
-    "test:stage2": "node --test tests/task-report-schema.test.mjs tests/report-publisher.test.mjs tests/stage2-*.test.mjs tests/state-kernel.test.mjs tests/stage1-runtime-*.test.mjs",
+    "test:stage2": "node --test tests/task-report-schema.test.mjs tests/report-publisher.test.mjs tests/stage2-*.test.mjs tests/stage3-*.test.mjs tests/state-kernel.test.mjs tests/stage1-runtime-*.test.mjs",
     "check:shell": "bash -n scripts/*.sh",
     "check:shellcheck": "shellcheck --shell=bash scripts/*.sh",
     "check:python": "python3 -m py_compile scripts/harness-fs-helper.py",

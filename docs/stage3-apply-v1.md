@@ -132,8 +132,10 @@ bytes. The receipt is:
   `I_ATTENDED_THIS_EXACT_PREVIEW_AND_REJECT` for reject
 
 The recorder validates the receipt against the live journal under the
-repository lock, requires the referenced preview to be the newest attempt and
-still live (integration and apply refs unchanged), and journals
+repository lock and requires the referenced preview to be the newest, still
+open attempt. An `approve` receipt additionally requires the preview to still
+be live (integration and apply refs unchanged); a `reject` receipt records on
+a drifted target too, so an attempt can always close. The recorder journals
 `approval.record` with the receipt as observed identity and the receipt digest
 as request digest. The journal is the only durable approval store; there is no
 approval file slot, payload path, destination, alternate FD, environment

@@ -951,11 +951,11 @@ export async function runLiveStage2Evidence({
 		);
 		assert.equal(
 			JSON.parse(readFileSync(join(pluginCheckout, "package.json"))).version,
-			"0.3.0",
+			"0.4.0",
 		);
 		assert.match(
 			readFileSync(join(pluginCheckout, "herdr-plugin.toml"), "utf8"),
-			/^version = "0\.3\.0"$/m,
+			/^version = "0\.4\.0"$/m,
 		);
 		assert.equal(command("herdr", ["--version"]), "herdr 0.7.5");
 		const server = command("herdr", ["status", "server"]);

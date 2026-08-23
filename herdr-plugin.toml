@@ -1,13 +1,14 @@
 id = "structupath.conductor"
 name = "Conductor"
-version = "0.3.0"
+version = "0.4.0"
 min_herdr_version = "0.7.5"
-description = "Stage 2 attended strict task/report contracts and exact-SHA review gates for Herdr 0.7.5"
+description = "Attended strict task/report contracts, exact-SHA review gates, and single-ref Stage 3 apply for Herdr 0.7.5"
 platforms = ["macos", "linux"]
 
-# Exactly five attended actions share one strict context-bound runtime authority.
-# Herdr actions receive no arguments. Configuration v2 contains no launch
-# arguments; task authority is durable before any pane or agent starts.
+# Exactly seven attended actions share one strict context-bound runtime
+# authority. Herdr actions receive no arguments. Configuration contains no
+# launch arguments; task authority is durable before any pane or agent starts,
+# and approval authority is durable and consumed before any apply effect.
 
 [[actions]]
 id = "assemble"

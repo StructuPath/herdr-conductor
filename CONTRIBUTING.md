@@ -1,8 +1,8 @@
 # Contributing
 
-Conductor `0.3.0` is attended Stage 2 software for exactly Herdr `0.7.5`.
-Changes must stay fail-closed, preserve one runtime authority, and avoid claims
-beyond implemented and independently checked behavior.
+Conductor `0.4.0` is attended Stage 2 and Stage 3 software for exactly Herdr
+`0.7.5`. Changes must stay fail-closed, preserve one runtime authority, and
+avoid claims beyond implemented and independently checked behavior.
 
 ## Development requirements
 
@@ -30,7 +30,8 @@ manifest, historical evidence, and pinned Actionlint.
 ## Change boundaries
 
 - `scripts/stage1-runtime.mjs` remains the one implementation behind assemble,
-  board, status, harvest, and stand-down. Do not add a competing runtime.
+  board, status, harvest, preview, apply, and stand-down. Do not add a
+  competing runtime.
 - Task/outbox authority must be durable before pane/agent creation. Reports use
   only bounded stdin and one exact task-bound destination.
 - Preserve complete producer selection, collector-computed paths, deterministic
@@ -44,7 +45,13 @@ manifest, historical evidence, and pinned Actionlint.
 - Product runtime never removes worktrees, branches, tasks, outboxes, reports,
   gate sources, artifacts, recordings, logs, or state. Only the explicit live
   harness may delete its exact identity-bound disposable inventory.
-- Do not add Stage 3 preview/approval/apply/recovery, suite adapters, unattended
+- Stage 3 stays the documented attended single-ref apply: journal-only
+  fixed-statement approval receipts, durable consumption before any effect,
+  exactly zero or one fast-forward apply CAS per attempt, and uncertainty
+  resolution only for the apply publication by exact re-observation. Do not add
+  approval delegation, multi-ref or non-fast-forward apply, or resolution for
+  any other operation.
+- Do not add suite adapters, unattended
   launch, Browser/Guard/Swarm promotion, site changes, push/release automation,
   cleanup/prune/migration/expiry, or newer-Herdr claims.
 
@@ -91,8 +98,9 @@ A pull request must state:
    no-recovery limitations;
 5. whether package, manifest, README, SECURITY, private-state docs, roles,
    source definition, evidence inventory, and CI agree; and
-6. explicit confirmation that no Stage 3, adapter, unattended, product cleanup,
-   Browser, site, push, tag, or release change entered scope.
+6. explicit confirmation that no adapter, unattended, product cleanup,
+   Browser, site, push, tag, or release change entered scope, and that Stage 3
+   changes stay inside the single-ref attended apply boundary.
 
 Never include credentials, tokens, private paths/state, raw action output,
 prompts, transcripts, recordings, customer data, or unsanitized evidence.
