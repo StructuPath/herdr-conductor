@@ -18,6 +18,7 @@
     "check:evidence": "node scripts/check-evidence-inventory.mjs && node scripts/check-b0-identity-evidence.mjs && node scripts/check-stage1-live-smoke-evidence.mjs",
     "check:release": "node scripts/check-stage2-live-evidence.mjs",
     "report:publish": "node scripts/report-publisher.mjs publish",
+    "apply:approve": "node scripts/approval-recorder.mjs record",
     "evidence:stage2:live": "node scripts/run-stage2-live-evidence.mjs",
     "evidence:stage2:finalize": "node scripts/finalize-stage2-live-evidence.mjs",
     "check": "npm test && npm run check:shell && npm run check:python && npm run check:manifest && npm run check:docs && npm run check:evidence"

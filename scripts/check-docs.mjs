@@ -9,6 +9,8 @@ const EXPECTED_ACTIONS = [
 	"board",
 	"status",
 	"harvest",
+	"preview",
+	"apply",
 	"stand-down",
 ];
 const EXPECTED_PANES = ["board-pane"];

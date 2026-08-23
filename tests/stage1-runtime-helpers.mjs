@@ -335,6 +335,29 @@ class FakeHerdr {
 				);
 			} else if (args[2] === "-c" && args[3] === "diff.renames=false") {
 				assert.equal(args[4], "diff");
+			} else if (args[2] === "show-ref") {
+				assert.deepEqual(args, [
+					"-C",
+					args[1],
+					"show-ref",
+					"--verify",
+					"--hash",
+					args[5],
+				]);
+				assert.match(args[5], /^refs\//);
+			} else if (args[2] === "diff") {
+				assert.deepEqual(args, [
+					"-C",
+					args[1],
+					"diff",
+					"--name-status",
+					"--no-renames",
+					"-z",
+					args[6],
+					args[7],
+				]);
+				assert.match(args[6], /^[a-f0-9]{40}$/);
+				assert.match(args[7], /^[a-f0-9]{40}$/);
 			} else if (args[2] === "symbolic-ref") {
 				assert.deepEqual(args, ["-C", args[1], "symbolic-ref", "-q", "HEAD"]);
 			} else if (args[2] === "worktree") {
@@ -813,6 +836,7 @@ async function assembledFixture({
 	seed = 1,
 	random = deterministicRandom(seed),
 	stateRoot = join(temp("conductor-b2-state-"), "state"),
+	configOverrides = {},
 	fault,
 } = {}) {
 	const fake = new FakeHerdr();
@@ -820,7 +844,7 @@ async function assembledFixture({
 	stateRoot = realpathSync(stateRoot);
 	const result = await assemble({
 		contextJson: context(repository, workspace),
-		configPath: config(repository, roles, {}, stateRoot),
+		configPath: config(repository, roles, configOverrides, stateRoot),
 		exec: fake.exec,
 		herdrBin: "fake-herdr",
 		random,

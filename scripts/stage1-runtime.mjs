@@ -18,6 +18,9 @@ import {
 	validateGeneration,
 	validateGitObjectId,
 	validateId,
+	validateStage3ApplyIdentity,
+	validateStage3ConsumptionIdentity,
+	validateStage3PreviewIdentity,
 } from "./private-state-schema.mjs";
 import {
 	parseReportBytes,
@@ -49,7 +52,14 @@ import {
 	readStablePrivateBytes,
 	releaseRepositoryLock,
 	resolveGitCommonDirectory,
+	resolveUncertainApplyPublication,
 } from "./state-kernel.mjs";
+import {
+	observeStage3ApplyTarget,
+	publishStage3ApplyCas,
+	resolveStage3ApplyOutcome,
+	stage3ApplyTargetRef,
+} from "./stage3-apply.mjs";
 import { createGateSource, validateGateSource } from "./gate-source.mjs";
 import {
 	bindIntegrationTarget,
@@ -2184,6 +2194,561 @@ export async function standDown({
 	}
 }
 
+function stage3IntegrationAuthority(active) {
+	const entries = exactObservedEntries(active, "integration.harvest");
+	if (entries.length !== 1)
+		fail("bookkeeping_unknown", "stage3 requires one observed integration harvest");
+	return {
+		integration: entries[0].observed_identity,
+		integrationEntryDigest: entries[0].entry_digest,
+	};
+}
+
+function stage3GateBinding(active, config, stateRoot) {
+	const acceptedReports = deriveRetainedReportAuthority(active, stateRoot);
+	const gateRoles = config.roles
+		.filter(
+			(role) =>
+				role.contract_role === "reviewer" || role.contract_role === "validator",
+		)
+		.sort((left, right) =>
+			Buffer.compare(Buffer.from(left.name), Buffer.from(right.name)),
+		);
+	return gateRoles.map((role) => {
+		const report = acceptedReports[role.name];
+		if (!report)
+			fail(
+				"operation_conflict",
+				`gate ${role.name} has no accepted report for preview`,
+			);
+		if (report.status !== "completed" || report.result === null)
+			fail(
+				"operation_conflict",
+				`gate ${role.name} report is not completed and cannot be previewed`,
+			);
+		return {
+			role_name: role.name,
+			contract_role: role.contract_role,
+			task_digest: report.task.digest,
+			report_digest: report.report_digest,
+			status: report.status,
+			result_kind: report.result.kind,
+			verdict: report.result.verdict,
+		};
+	});
+}
+
+function stage3AttemptAuthority(active) {
+	const observed = (type) =>
+		active.journal.filter(
+			(entry) => entry.operation_type === type && entry.phase === "observed",
+		);
+	const previews = observed("apply.preview");
+	if (previews.length === 0) return null;
+	const newest = previews.at(-1);
+	const generation = newest.subject.generation;
+	const one = (entries, label) => {
+		const matching = entries.filter(
+			(entry) => entry.subject.generation === generation,
+		);
+		if (matching.length > 1)
+			fail("bookkeeping_unknown", `stage3 ${label} authority is duplicated`);
+		return matching[0] ?? null;
+	};
+	return {
+		generation,
+		attemptCount: previews.length,
+		previewEntry: newest,
+		approvalEntry: one(observed("approval.record"), "approval"),
+		consumptionEntry: one(observed("approval.consume"), "consumption"),
+		publicationEntry: one(observed("apply.publish"), "publication"),
+	};
+}
+
+function buildStage3PreviewIdentity({
+	active,
+	store,
+	config,
+	targetRef,
+	attemptGeneration,
+	stateRoot,
+	exec,
+}) {
+	const { integration, integrationEntryDigest } = stage3IntegrationAuthority(active);
+	const gates = stage3GateBinding(active, config, stateRoot);
+	const applyObservation = observeStage3ApplyTarget({
+		repository: store.repositoryRoot,
+		targetRef,
+		integration: {
+			target_ref: integration.target_ref,
+			starting_sha: integration.starting_sha,
+			final_sha: integration.final_sha,
+		},
+		exec,
+	});
+	const identity = {
+		document_type: "herdr-conductor-stage3-preview",
+		schema_version: 1,
+		repository_key: store.repository.key,
+		workspace_id: active.state.workspace_id,
+		run_id: active.state.run_id,
+		run_generation: active.state.generation,
+		attempt_generation: attemptGeneration,
+		integration: {
+			target_ref: integration.target_ref,
+			starting_sha: integration.starting_sha,
+			final_sha: integration.final_sha,
+			integration_entry_digest: integrationEntryDigest,
+		},
+		gates,
+		apply: {
+			target_ref: applyObservation.target_ref,
+			observed_sha: applyObservation.observed_sha,
+			final_sha: applyObservation.final_sha,
+			diff_name_status_sha256: applyObservation.diff_name_status_sha256,
+			changed_path_count: applyObservation.changed_path_count,
+		},
+	};
+	return validateStage3PreviewIdentity(identity, "stage3 preview");
+}
+
+function stage3LiveApplyObservation(store, previewIdentity, exec) {
+	const observed = observeStage3ApplyTarget({
+		repository: store.repositoryRoot,
+		targetRef: previewIdentity.apply.target_ref,
+		integration: {
+			target_ref: previewIdentity.integration.target_ref,
+			starting_sha: previewIdentity.integration.starting_sha,
+			final_sha: previewIdentity.integration.final_sha,
+		},
+		exec,
+	});
+	if (canonicalJson({ ...observed }) !== canonicalJson(previewIdentity.apply))
+		fail(
+			"stale_source",
+			"apply target observation no longer matches the previewed authority",
+		);
+	return observed;
+}
+
+function stage3ApprovalCommand(config) {
+	return `node ${JSON.stringify(fileURLToPath(new URL("./approval-recorder.mjs", import.meta.url)))} record --config ${JSON.stringify(config.path)}`;
+}
+
+function requireStage3Target(config) {
+	const targetRef = stage3ApplyTargetRef(config.raw);
+	if (!targetRef)
+		fail(
+			"capability_unavailable",
+			"configuration does not declare a Stage 3 apply target",
+		);
+	return targetRef;
+}
+
+export async function preview({
+	contextJson = process.env.HERDR_PLUGIN_CONTEXT_JSON,
+	configPath,
+	herdrBin = process.env.HERDR_BIN_PATH ?? "herdr",
+	exec = defaultExec,
+	random = randomBytes,
+	fault,
+} = {}) {
+	const context = parsePluginContext(contextJson);
+	const config = parseConfig(
+		configPath ?? join(context.workspaceCwd, ".herdr-conductor.json"),
+	);
+	const stateRoot = config.stateRoot;
+	requireHerdrRuntime(exec, herdrBin);
+	const store = openExistingStore({ stateRoot, repoPath: context.workspaceCwd });
+	if (store.repositoryRoot !== context.workspaceCwd)
+		fail(
+			"foreign_repository",
+			"workspace_cwd must be the canonical repository root",
+		);
+	const targetRef = requireStage3Target(config);
+	refuseDeadRepositoryLock(store);
+	validateRunConfiguration(
+		loadActiveRun(store, { workspaceId: context.workspaceId }),
+		config,
+	);
+	const lock = acquireRepositoryLock(store, {
+		operationId: `preview-${sha256(context.workspaceId).slice(0, 24)}`,
+		fault,
+	});
+	try {
+		let active = loadActiveRun(store, { workspaceId: context.workspaceId });
+		validateRunConfiguration(active, config);
+		const lifecycle = scanStage2Authority(active, config.raw, {
+			acceptedReports: deriveRetainedReportAuthority(active, stateRoot),
+			sourceRefused: gateSourceRefusals(active, config, exec),
+		});
+		const attempt = stage3AttemptAuthority(active);
+		if (
+			["apply_previewed", "apply_approved", "apply_consumed"].includes(
+				lifecycle.state,
+			)
+		)
+			return {
+				run_id: active.state.run_id,
+				workspace_id: context.workspaceId,
+				lifecycle: lifecycle.state,
+				preview: attempt.previewEntry.observed_identity,
+				preview_entry_digest: attempt.previewEntry.entry_digest,
+				approval_command: stage3ApprovalCommand(config),
+				replayed: true,
+			};
+		if (lifecycle.state === "applied")
+			return {
+				run_id: active.state.run_id,
+				workspace_id: context.workspaceId,
+				lifecycle: "applied",
+				apply: attempt.publicationEntry.observed_identity,
+				replayed: true,
+			};
+		if (
+			!["gate_reports_collected", "integration_harvested_no_gates"].includes(
+				lifecycle.state,
+			) &&
+			!["apply_rejected", "apply_voided"].includes(lifecycle.state)
+		)
+			fail(
+				"operation_conflict",
+				`preview is not legal in lifecycle ${lifecycle.state}`,
+			);
+		if ((attempt?.attemptCount ?? 0) >= 8)
+			fail("operation_conflict", "stage3 attempt limit is exhausted");
+		const attemptGeneration = randomToken(16, random);
+		const identity = buildStage3PreviewIdentity({
+			active,
+			store,
+			config,
+			targetRef,
+			attemptGeneration,
+			stateRoot,
+			exec,
+		});
+		await performJournaledOperation(lock, {
+			workspaceId: context.workspaceId,
+			runId: active.state.run_id,
+			runGeneration: active.state.generation,
+			operationId: `apply-preview-${attemptGeneration}`,
+			operationType: "apply.preview",
+			subject: { kind: "apply", id: "apply", generation: attemptGeneration },
+			requestDigest: sha256({
+				configuration_digest: config.digest,
+				identity,
+			}),
+			fault: operationFault(fault, "apply.preview"),
+			effect: async () => {
+				const reobserved = buildStage3PreviewIdentity({
+					active,
+					store,
+					config,
+					targetRef,
+					attemptGeneration,
+					stateRoot,
+					exec,
+				});
+				if (canonicalJson(reobserved) !== canonicalJson(identity))
+					fail("foreign_or_stale", "apply preview changed during binding");
+				return { resultDigest: sha256(identity), observedIdentity: identity };
+			},
+		});
+		active = loadActiveRun(store, { workspaceId: context.workspaceId });
+		const recorded = stage3AttemptAuthority(active);
+		if (recorded?.generation !== attemptGeneration)
+			fail("bookkeeping_unknown", "recorded preview authority is missing");
+		return {
+			run_id: active.state.run_id,
+			workspace_id: context.workspaceId,
+			lifecycle: "apply_previewed",
+			preview: recorded.previewEntry.observed_identity,
+			preview_entry_digest: recorded.previewEntry.entry_digest,
+			approval_command: stage3ApprovalCommand(config),
+			replayed: false,
+		};
+	} finally {
+		releaseRepositoryLock(lock);
+	}
+}
+
+function stage3PublishRequest(previewIdentity, consumptionEntryDigest) {
+	return {
+		consumption_entry_digest: consumptionEntryDigest,
+		target_ref: previewIdentity.apply.target_ref,
+		expected_sha: previewIdentity.apply.observed_sha,
+		final_sha: previewIdentity.apply.final_sha,
+		attempt_generation: previewIdentity.attempt_generation,
+	};
+}
+
+async function resolveStage3Uncertainty({ lock, store, context, exec, fault }) {
+	return resolveUncertainApplyPublication(lock, {
+		workspaceId: context.workspaceId,
+		fault,
+		resolve: (entry, uncertainActive) => {
+			const previewEntry = uncertainActive.journal.find(
+				(candidate) =>
+					candidate.operation_type === "apply.preview" &&
+					candidate.phase === "observed" &&
+					candidate.subject.generation === entry.subject.generation,
+			);
+			const consumptionEntry = uncertainActive.journal.find(
+				(candidate) =>
+					candidate.operation_type === "approval.consume" &&
+					candidate.phase === "observed" &&
+					candidate.subject.generation === entry.subject.generation,
+			);
+			if (!previewEntry || !consumptionEntry)
+				fail(
+					"bookkeeping_unknown",
+					"uncertain apply publication is missing its attempt authority",
+				);
+			const previewIdentity = previewEntry.observed_identity;
+			if (
+				entry.request_digest !==
+				sha256(stage3PublishRequest(previewIdentity, consumptionEntry.entry_digest))
+			)
+				fail(
+					"bookkeeping_unknown",
+					"uncertain apply publication does not bind its attempt",
+				);
+			const outcome = resolveStage3ApplyOutcome({
+				repository: store.repositoryRoot,
+				targetRef: previewIdentity.apply.target_ref,
+				expectedSha: previewIdentity.apply.observed_sha,
+				finalSha: previewIdentity.apply.final_sha,
+				exec,
+			});
+			const identity = validateStage3ApplyIdentity(
+				{
+					document_type: "herdr-conductor-stage3-apply",
+					schema_version: 1,
+					repository_key: store.repository.key,
+					workspace_id: uncertainActive.state.workspace_id,
+					run_id: uncertainActive.state.run_id,
+					run_generation: uncertainActive.state.generation,
+					attempt_generation: entry.subject.generation,
+					consumption_entry_digest: consumptionEntry.entry_digest,
+					target_ref: previewIdentity.apply.target_ref,
+					expected_sha: previewIdentity.apply.observed_sha,
+					final_sha: previewIdentity.apply.final_sha,
+					cas_count: outcome.cas_count,
+					outcome: outcome.outcome,
+				},
+				"stage3 apply resolution",
+			);
+			return { resultDigest: sha256(identity), observedIdentity: identity };
+		},
+	});
+}
+
+export async function applyStage3({
+	contextJson = process.env.HERDR_PLUGIN_CONTEXT_JSON,
+	configPath,
+	herdrBin = process.env.HERDR_BIN_PATH ?? "herdr",
+	exec = defaultExec,
+	fault,
+} = {}) {
+	const context = parsePluginContext(contextJson);
+	const config = parseConfig(
+		configPath ?? join(context.workspaceCwd, ".herdr-conductor.json"),
+	);
+	const stateRoot = config.stateRoot;
+	requireHerdrRuntime(exec, herdrBin);
+	const store = openExistingStore({ stateRoot, repoPath: context.workspaceCwd });
+	if (store.repositoryRoot !== context.workspaceCwd)
+		fail(
+			"foreign_repository",
+			"workspace_cwd must be the canonical repository root",
+		);
+	requireStage3Target(config);
+	refuseDeadRepositoryLock(store);
+	const lock = acquireRepositoryLock(store, {
+		operationId: `apply-${sha256(context.workspaceId).slice(0, 24)}`,
+		fault,
+	});
+	try {
+		let resolution = null;
+		try {
+			loadActiveRun(store, { workspaceId: context.workspaceId });
+		} catch (error) {
+			if (
+				!(error instanceof StateKernelError) ||
+				error.code !== "recovery_required"
+			)
+				throw error;
+			resolution = await resolveStage3Uncertainty({
+				lock,
+				store,
+				context,
+				exec,
+				fault,
+			});
+		}
+		let active = loadActiveRun(store, { workspaceId: context.workspaceId });
+		validateRunConfiguration(active, config);
+		const lifecycle = scanStage2Authority(active, config.raw, {
+			acceptedReports: deriveRetainedReportAuthority(active, stateRoot),
+			sourceRefused: gateSourceRefusals(active, config, exec),
+		});
+		const attempt = stage3AttemptAuthority(active);
+		if (lifecycle.state === "applied")
+			return {
+				run_id: active.state.run_id,
+				workspace_id: context.workspaceId,
+				lifecycle: "applied",
+				apply: attempt.publicationEntry.observed_identity,
+				replayed: resolution === null,
+				resolved: resolution !== null,
+			};
+		if (lifecycle.state === "apply_voided")
+			return {
+				run_id: active.state.run_id,
+				workspace_id: context.workspaceId,
+				lifecycle: "apply_voided",
+				apply: attempt.publicationEntry.observed_identity,
+				resolved: resolution !== null,
+			};
+		if (!["apply_approved", "apply_consumed"].includes(lifecycle.state))
+			fail(
+				"operation_conflict",
+				`apply is not legal in lifecycle ${lifecycle.state}`,
+			);
+		const previewIdentity = attempt.previewEntry.observed_identity;
+		if (attempt.approvalEntry.observed_identity.decision !== "approve")
+			fail("operation_conflict", "apply requires an approve receipt");
+		if (
+			attempt.approvalEntry.observed_identity.preview_entry_digest !==
+			attempt.previewEntry.entry_digest
+		)
+			fail(
+				"bookkeeping_unknown",
+				"approval receipt does not bind the previewed authority",
+			);
+		stage3LiveApplyObservation(store, previewIdentity, exec);
+		const consumptionIdentity = validateStage3ConsumptionIdentity(
+			{
+				document_type: "herdr-conductor-stage3-consumption",
+				schema_version: 1,
+				repository_key: store.repository.key,
+				workspace_id: active.state.workspace_id,
+				run_id: active.state.run_id,
+				run_generation: active.state.generation,
+				attempt_generation: attempt.generation,
+				approval_entry_digest: attempt.approvalEntry.entry_digest,
+				preview_entry_digest: attempt.previewEntry.entry_digest,
+			},
+			"stage3 consumption",
+		);
+		await performJournaledOperation(lock, {
+			workspaceId: context.workspaceId,
+			runId: active.state.run_id,
+			runGeneration: active.state.generation,
+			operationId: `apply-consume-${attempt.generation}`,
+			operationType: "approval.consume",
+			subject: {
+				kind: "approval",
+				id: "apply",
+				generation: attempt.generation,
+			},
+			requestDigest: sha256(consumptionIdentity),
+			fault: operationFault(fault, "approval.consume"),
+			effect: async () => {
+				stage3LiveApplyObservation(store, previewIdentity, exec);
+				return {
+					resultDigest: sha256(consumptionIdentity),
+					observedIdentity: consumptionIdentity,
+				};
+			},
+		});
+		active = loadActiveRun(store, { workspaceId: context.workspaceId });
+		const consumed = stage3AttemptAuthority(active);
+		if (
+			consumed?.generation !== attempt.generation ||
+			!consumed.consumptionEntry
+		)
+			fail("bookkeeping_unknown", "consumption authority is missing");
+		stage3LiveApplyObservation(store, previewIdentity, exec);
+		const publishRequest = stage3PublishRequest(
+			previewIdentity,
+			consumed.consumptionEntry.entry_digest,
+		);
+		const applyIdentity = validateStage3ApplyIdentity(
+			{
+				document_type: "herdr-conductor-stage3-apply",
+				schema_version: 1,
+				repository_key: store.repository.key,
+				workspace_id: active.state.workspace_id,
+				run_id: active.state.run_id,
+				run_generation: active.state.generation,
+				attempt_generation: attempt.generation,
+				consumption_entry_digest: consumed.consumptionEntry.entry_digest,
+				target_ref: previewIdentity.apply.target_ref,
+				expected_sha: previewIdentity.apply.observed_sha,
+				final_sha: previewIdentity.apply.final_sha,
+				cas_count: 1,
+				outcome: "applied",
+			},
+			"stage3 apply",
+		);
+		await performJournaledOperation(lock, {
+			workspaceId: context.workspaceId,
+			runId: active.state.run_id,
+			runGeneration: active.state.generation,
+			operationId: `apply-publish-${attempt.generation}`,
+			operationType: "apply.publish",
+			subject: { kind: "apply", id: "apply", generation: attempt.generation },
+			requestDigest: sha256(publishRequest),
+			fault: operationFault(fault, "apply.publish"),
+			effect: async () => {
+				publishStage3ApplyCas({
+					repository: store.repositoryRoot,
+					targetRef: previewIdentity.apply.target_ref,
+					expectedSha: previewIdentity.apply.observed_sha,
+					finalSha: previewIdentity.apply.final_sha,
+					preflight: () =>
+						stage3LiveApplyObservation(store, previewIdentity, exec),
+					exec,
+					fault: operationFault(fault, "apply.publish"),
+				});
+				return {
+					resultDigest: sha256(applyIdentity),
+					observedIdentity: applyIdentity,
+				};
+			},
+			validateBeforeResultPublication: async () => {
+				if (
+					gitLine(exec, store.repositoryRoot, [
+						"rev-parse",
+						previewIdentity.apply.target_ref,
+					]) !== previewIdentity.apply.final_sha
+				)
+					fail(
+						"durability_unknown",
+						"published apply ref changed before result publication",
+					);
+			},
+		});
+		active = loadActiveRun(store, { workspaceId: context.workspaceId });
+		const published = stage3AttemptAuthority(active);
+		if (
+			published?.publicationEntry?.observed_identity?.outcome !== "applied"
+		)
+			fail("bookkeeping_unknown", "published apply authority is missing");
+		return {
+			run_id: active.state.run_id,
+			workspace_id: context.workspaceId,
+			lifecycle: "applied",
+			apply: published.publicationEntry.observed_identity,
+			replayed: false,
+			resolved: resolution !== null,
+		};
+	} finally {
+		releaseRepositoryLock(lock);
+	}
+}
+
 export function readStatus({
 	contextJson = process.env.HERDR_PLUGIN_CONTEXT_JSON,
 	configPath,
@@ -2320,11 +2885,15 @@ async function main() {
 		process.stdout.write(canonicalJson(readStatus()));
 	else if (command === "harvest")
 		process.stdout.write(canonicalJson(await reconcile()));
+	else if (command === "preview")
+		process.stdout.write(canonicalJson(await preview()));
+	else if (command === "apply")
+		process.stdout.write(canonicalJson(await applyStage3()));
 	else if (command === "stand-down")
 		process.stdout.write(canonicalJson(await standDown()));
 	else {
 		process.stderr.write(
-			"usage: stage1-runtime.mjs assemble|board|status|harvest|stand-down\n",
+			"usage: stage1-runtime.mjs assemble|board|status|harvest|preview|apply|stand-down\n",
 		);
 		process.exitCode = 64;
 	}

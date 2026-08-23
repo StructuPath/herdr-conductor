@@ -34,6 +34,18 @@ description = "Attended report collection, complete deterministic one-CAS integr
 command = ["bash", "scripts/harvest.sh"]
 
 [[actions]]
+id = "preview"
+title = "Preview the apply"
+description = "Journal one zero-effect Stage 3 apply preview binding the exact integration, gate reports, and configured apply target ref"
+command = ["bash", "scripts/preview.sh"]
+
+[[actions]]
+id = "apply"
+title = "Apply the approved run"
+description = "Consume the recorded approve receipt exactly once and move the configured apply ref with exactly zero or one compare-and-swap"
+command = ["bash", "scripts/apply.sh"]
+
+[[actions]]
 id = "stand-down"
 title = "Stand down the team"
 description = "Archive strict state and close only panes matching the deterministic full live recorded identity tuple"

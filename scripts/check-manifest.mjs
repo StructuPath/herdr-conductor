@@ -113,6 +113,8 @@ export function validateRepository(root) {
 		"board",
 		"status",
 		"harvest",
+		"preview",
+		"apply",
 		"stand-down",
 	];
 	if (
@@ -121,7 +123,7 @@ export function validateRepository(root) {
 			JSON.stringify(expectedActions)
 	)
 		errors.push(
-			"manifest must declare exactly the five ordered Stage 2 actions",
+			"manifest must declare exactly the seven ordered Conductor actions",
 		);
 	for (const action of manifest.actions ?? []) {
 		const allowed = ["id", "title", "description", "command"];

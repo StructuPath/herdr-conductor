@@ -140,6 +140,8 @@ herdr plugin action invoke assemble --plugin structupath.conductor
 herdr plugin action invoke board --plugin structupath.conductor
 herdr plugin action invoke status --plugin structupath.conductor
 herdr plugin action invoke harvest --plugin structupath.conductor
+herdr plugin action invoke preview --plugin structupath.conductor
+herdr plugin action invoke apply --plugin structupath.conductor
 herdr plugin action invoke stand-down --plugin structupath.conductor
 ```
 
