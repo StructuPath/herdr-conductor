@@ -111,6 +111,57 @@ export function classifyCleanGates(gateFacts) {
 	return "gate_reports_collected";
 }
 
+export const STAGE3_BASE_STATES = new Set([
+	"gate_reports_collected",
+	"integration_harvested_no_gates",
+]);
+export function classifyStage3Apply(baseState, attempts) {
+	if (!Array.isArray(attempts) || attempts.length > 8)
+		fail("stage3 attempt cardinality is invalid");
+	if (attempts.length === 0) return baseState;
+	if (!STAGE3_BASE_STATES.has(baseState))
+		fail("stage3 apply authority precedes gate collection");
+	const generations = attempts.map((attempt) => attempt?.generation);
+	if (
+		generations.some((generation) => typeof generation !== "string") ||
+		new Set(generations).size !== generations.length
+	)
+		fail("stage3 attempt generations are invalid");
+	for (const attempt of attempts) {
+		if (
+			attempt.approval !== null &&
+			attempt.approval !== "approve" &&
+			attempt.approval !== "reject"
+		)
+			fail("stage3 approval decision is invalid");
+		if (
+			attempt.publication !== null &&
+			attempt.publication !== "applied" &&
+			attempt.publication !== "unapplied"
+		)
+			fail("stage3 publication outcome is invalid");
+		if (typeof attempt.consumed !== "boolean")
+			fail("stage3 consumption fact is invalid");
+		if (attempt.publication !== null && !attempt.consumed)
+			fail("stage3 publication skips consumption");
+		if (attempt.consumed && attempt.approval !== "approve")
+			fail("stage3 consumption skips an approve receipt");
+	}
+	const closed = (attempt) =>
+		attempt.publication === "unapplied" || attempt.approval === "reject";
+	for (const attempt of attempts.slice(0, -1))
+		if (!closed(attempt)) fail("a prior stage3 attempt is not closed");
+	if (attempts.slice(0, -1).some((a) => a.publication === "applied"))
+		fail("an applied stage3 attempt was superseded");
+	const newest = attempts.at(-1);
+	if (newest.publication === "applied") return "applied";
+	if (newest.publication === "unapplied") return "apply_voided";
+	if (newest.consumed) return "apply_consumed";
+	if (newest.approval === "approve") return "apply_approved";
+	if (newest.approval === "reject") return "apply_rejected";
+	return "apply_previewed";
+}
+
 export function classifyStandDownPrefix(standDown) {
 	if (!standDown || typeof standDown !== "object" || Array.isArray(standDown))
 		fail("stand-down facts are invalid");
@@ -151,7 +202,7 @@ export function classifyStandDownPrefix(standDown) {
 	});
 }
 
-function nextOperations(state) {
+function nextOperations(state, { stage3Configured = false } = {}) {
 	if (state === "archived") return ["status"];
 	if (state === "delivery_ready_reconcile")
 		return ["integration.reconcile", "run.stand-down.begin"];
@@ -166,6 +217,16 @@ function nextOperations(state) {
 		state === "recovery_required"
 	)
 		return [];
+	if (state === "apply_previewed")
+		return ["approval.record", "run.stand-down.begin"];
+	if (state === "apply_approved")
+		return ["approval.consume", "run.stand-down.begin"];
+	if (state === "apply_consumed") return ["apply.publish"];
+	if (state === "applied") return ["run.stand-down.begin"];
+	if (state === "apply_rejected" || state === "apply_voided")
+		return ["apply.preview", "run.stand-down.begin"];
+	if (stage3Configured && STAGE3_BASE_STATES.has(state))
+		return ["apply.preview", "run.stand-down.begin"];
 	if (CLEAN_STATES.has(state)) return ["run.stand-down.begin"];
 	return [];
 }
@@ -257,6 +318,56 @@ function deriveFacts(active, config, options) {
 				contract_role === "reviewer" || contract_role === "validator",
 		)
 		.map(roleFacts);
+	const stage3Configured =
+		config.version === 3 && config.apply !== null && config.apply !== undefined;
+	const observedStage3 = (type) =>
+		active.journal.filter(
+			(entry) => entry.operation_type === type && entry.phase === "observed",
+		);
+	const previews = observedStage3("apply.preview");
+	const approvals = observedStage3("approval.record");
+	const consumptions = observedStage3("approval.consume");
+	const publications = observedStage3("apply.publish");
+	const previewGenerations = new Set(
+		previews.map((entry) => entry.subject.generation),
+	);
+	for (const orphanSource of [approvals, consumptions, publications])
+		if (
+			orphanSource.some(
+				(entry) => !previewGenerations.has(entry.subject.generation),
+			)
+		)
+			fail("stage3 authority is missing its preview");
+	if (
+		(previews.length > 0 ||
+			approvals.length > 0 ||
+			consumptions.length > 0 ||
+			publications.length > 0) &&
+		!stage3Configured
+	)
+		fail("stage3 authority exists without a configured apply target");
+	const stage3Attempts = previews.map((entry) => {
+		const generation = entry.subject.generation;
+		const match = (entries) =>
+			entries.filter(
+				(candidate) => candidate.subject.generation === generation,
+			);
+		const approvalEntries = match(approvals);
+		const consumptionEntries = match(consumptions);
+		const publicationEntries = match(publications);
+		if (
+			approvalEntries.length > 1 ||
+			consumptionEntries.length > 1 ||
+			publicationEntries.length > 1
+		)
+			fail("stage3 attempt authority is duplicated");
+		return {
+			generation,
+			approval: approvalEntries[0]?.observed_identity?.decision ?? null,
+			consumed: consumptionEntries.length === 1,
+			publication: publicationEntries[0]?.observed_identity?.outcome ?? null,
+		};
+	});
 	const standDownEntry = active.journal.find(
 		(entry) =>
 			entry.operation_type === "run.stand-down.begin" &&
@@ -295,6 +406,8 @@ function deriveFacts(active, config, options) {
 	return {
 		producers,
 		gates,
+		stage3Configured,
+		stage3Attempts,
 		reconciliation:
 			active.journal.find(
 				(entry) =>
@@ -338,6 +451,7 @@ export function scanStage2Authority(active, config, options = {}) {
 			)
 				fail("integration harvest is not observed");
 			state = classifyCleanGates(facts.gates ?? []);
+			state = classifyStage3Apply(state, facts.stage3Attempts ?? []);
 		}
 	} else {
 		if (facts.integrationHarvest)
@@ -349,12 +463,18 @@ export function scanStage2Authority(active, config, options = {}) {
 			)
 		)
 			fail("gate authority precedes integration harvest");
+		if ((facts.stage3Attempts ?? []).length > 0)
+			fail("stage3 apply authority precedes integration harvest");
 		state = classifyCleanDelivery(facts.producers ?? []);
 	}
 	return Object.freeze({
 		state,
 		detail,
-		legalNextOperations: Object.freeze(nextOperations(state)),
+		legalNextOperations: Object.freeze(
+			nextOperations(state, {
+				stage3Configured: facts.stage3Configured ?? false,
+			}),
+		),
 	});
 }
 
@@ -364,6 +484,7 @@ export function standDownReasonForState(state, requestedReason) {
 		normal_completion: new Set([
 			"integration_harvested_no_gates",
 			"gate_reports_collected",
+			"applied",
 		]),
 		nonprogressable_delivery: new Set(["delivery_nonprogressable"]),
 		source_policy_refusal: new Set(["gate_source_refused"]),
@@ -376,7 +497,13 @@ export function standDownReasonForState(state, requestedReason) {
 			"delivery_waiting_reports",
 			"gate_waiting_reports",
 		]),
-		operator_abandoned: CLEAN_STATES,
+		operator_abandoned: new Set([
+			...CLEAN_STATES,
+			"apply_previewed",
+			"apply_approved",
+			"apply_rejected",
+			"apply_voided",
+		]),
 	};
 	if (!allowed[requestedReason]?.has(state))
 		fail("stand-down reason does not match lifecycle state");

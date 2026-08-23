@@ -6,6 +6,7 @@ import { join } from "node:path";
 import {
 	classifyCleanDelivery,
 	classifyCleanGates,
+	classifyStage3Apply,
 	classifyStandDownPrefix,
 	scanStage2Authority,
 	standDownReasonForState,
@@ -786,5 +787,187 @@ test("integration transitions are disjoint and terminal archive wins", () => {
 			},
 		}).state,
 		"archived",
+	);
+});
+
+const attempt = (generation, overrides = {}) => ({
+	generation,
+	approval: null,
+	consumed: false,
+	publication: null,
+	...overrides,
+});
+
+test("stage3 apply states cover every attempt shape and barrier", () => {
+	assert.equal(
+		classifyStage3Apply("gate_reports_collected", []),
+		"gate_reports_collected",
+	);
+	assert.equal(
+		classifyStage3Apply("integration_harvested_no_gates", [attempt("g1")]),
+		"apply_previewed",
+	);
+	assert.equal(
+		classifyStage3Apply("gate_reports_collected", [
+			attempt("g1", { approval: "approve" }),
+		]),
+		"apply_approved",
+	);
+	assert.equal(
+		classifyStage3Apply("gate_reports_collected", [
+			attempt("g1", { approval: "reject" }),
+		]),
+		"apply_rejected",
+	);
+	assert.equal(
+		classifyStage3Apply("gate_reports_collected", [
+			attempt("g1", { approval: "approve", consumed: true }),
+		]),
+		"apply_consumed",
+	);
+	assert.equal(
+		classifyStage3Apply("gate_reports_collected", [
+			attempt("g1", {
+				approval: "approve",
+				consumed: true,
+				publication: "applied",
+			}),
+		]),
+		"applied",
+	);
+	assert.equal(
+		classifyStage3Apply("gate_reports_collected", [
+			attempt("g1", {
+				approval: "approve",
+				consumed: true,
+				publication: "unapplied",
+			}),
+		]),
+		"apply_voided",
+	);
+	assert.equal(
+		classifyStage3Apply("gate_reports_collected", [
+			attempt("g1", { approval: "reject" }),
+			attempt("g2", {
+				approval: "approve",
+				consumed: true,
+				publication: "unapplied",
+			}),
+			attempt("g3"),
+		]),
+		"apply_previewed",
+	);
+	code("bookkeeping_unknown", () =>
+		classifyStage3Apply("gate_waiting_reports", [attempt("g1")]),
+	);
+	code("bookkeeping_unknown", () =>
+		classifyStage3Apply("delivery_ready_reconcile", [attempt("g1")]),
+	);
+	code("bookkeeping_unknown", () =>
+		classifyStage3Apply("gate_reports_collected", [
+			attempt("g1"),
+			attempt("g2"),
+		]),
+	);
+	code("bookkeeping_unknown", () =>
+		classifyStage3Apply("gate_reports_collected", [
+			attempt("g1", {
+				approval: "approve",
+				consumed: true,
+				publication: "applied",
+			}),
+			attempt("g2"),
+		]),
+	);
+	code("bookkeeping_unknown", () =>
+		classifyStage3Apply("gate_reports_collected", [
+			attempt("g1", { publication: "applied", consumed: false }),
+		]),
+	);
+	code("bookkeeping_unknown", () =>
+		classifyStage3Apply("gate_reports_collected", [
+			attempt("g1", { consumed: true }),
+		]),
+	);
+	code("bookkeeping_unknown", () =>
+		classifyStage3Apply("gate_reports_collected", [
+			attempt("g1", { approval: "reject", consumed: true }),
+		]),
+	);
+	code("bookkeeping_unknown", () =>
+		classifyStage3Apply("gate_reports_collected", [
+			attempt("g1"),
+			attempt("g1"),
+		]),
+	);
+	code("bookkeeping_unknown", () =>
+		classifyStage3Apply(
+			"gate_reports_collected",
+			Array.from({ length: 9 }, (_, index) => attempt(`g${index}`)),
+		),
+	);
+});
+
+test("stage3 states gate their legal operations and stand-down reasons", () => {
+	const ready = {
+		producers: [producer("a", 5)],
+		gates: [],
+		uncertainty: null,
+		standDown: null,
+		archived: false,
+		archiveUncertain: false,
+		reconciliation: { observed: true },
+		integrationHarvest: { observed: true },
+	};
+	const scan = (extra) =>
+		scanStage2Authority(null, null, { facts: { ...ready, ...extra } });
+	assert.deepEqual(
+		[...scan({ stage3Configured: true }).legalNextOperations],
+		["apply.preview", "run.stand-down.begin"],
+	);
+	assert.deepEqual(
+		[...scan({}).legalNextOperations],
+		["run.stand-down.begin"],
+	);
+	assert.deepEqual(
+		[
+			...scan({
+				stage3Configured: true,
+				stage3Attempts: [attempt("g1", { approval: "approve" })],
+			}).legalNextOperations,
+		],
+		["approval.consume", "run.stand-down.begin"],
+	);
+	assert.deepEqual(
+		[
+			...scan({
+				stage3Configured: true,
+				stage3Attempts: [
+					attempt("g1", { approval: "approve", consumed: true }),
+				],
+			}).legalNextOperations,
+		],
+		["apply.publish"],
+	);
+	assert.equal(
+		standDownReasonForState("applied", "normal_completion"),
+		"normal_completion",
+	);
+	assert.equal(
+		standDownReasonForState("apply_previewed", "operator_abandoned"),
+		"operator_abandoned",
+	);
+	assert.equal(
+		standDownReasonForState("apply_voided", "operator_abandoned"),
+		"operator_abandoned",
+	);
+	code("bookkeeping_unknown", () =>
+		standDownReasonForState("apply_consumed", "operator_abandoned"),
+	);
+	code("bookkeeping_unknown", () =>
+		standDownReasonForState("applied", "operator_abandoned"),
+	);
+	code("bookkeeping_unknown", () =>
+		standDownReasonForState("apply_previewed", "normal_completion"),
 	);
 });
