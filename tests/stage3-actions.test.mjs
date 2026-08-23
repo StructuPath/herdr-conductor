@@ -13,6 +13,7 @@ import {
 	canonicalJson,
 } from "../scripts/private-state-schema.mjs";
 import {
+	STAGE3_APPLY_TARGET as APPLY_TARGET,
 	assert,
 	assembledFixture,
 	context,
@@ -21,69 +22,19 @@ import {
 	git,
 	publishWorkerReport,
 	readStatus,
+	recordStage3Receipt as record,
+	stage3ApplyOverrides,
+	stage3HarvestedApplyFixture,
+	stage3Invocation as invocation,
+	stage3ProducerRoles as producerRoles,
+	stage3Receipt as receiptFor,
 	standDown,
 } from "./stage1-runtime-helpers.mjs";
 
-const APPLY_TARGET = "refs/heads/release";
-const producerRoles = () => [
-	{ name: "builder", contract_role: "builder", kind: "pi", mode: "write" },
-];
-const applyOverrides = { version: 3, apply: { target_ref: APPLY_TARGET } };
-
 async function harvestedApplyFixture(seed = 1) {
-	const fixture = await assembledFixture({
-		roles: producerRoles(),
-		seed,
-		configOverrides: structuredClone(applyOverrides),
-	});
-	git(fixture.repository, "update-ref", APPLY_TARGET, fixture.result.fork_sha);
-	const producer = fixture.result.workers[0];
-	mkdirSync(join(producer.cwd, "src"));
-	writeFileSync(join(producer.cwd, "src", "feature.mjs"), "export default 1;\n");
-	git(producer.cwd, "add", "src/feature.mjs");
-	git(producer.cwd, "commit", "-qm", "feature");
-	await publishWorkerReport(fixture, producer);
-	const harvested = await reconcile({
-		contextJson: context(fixture.repository, fixture.workspace),
-		exec: fixture.fake.exec,
-		herdrBin: "fake",
-		random: deterministicRandom(40 + seed),
-	});
-	assert.equal(harvested.lifecycle, "integration_harvested_no_gates");
-	return { fixture, harvested };
-}
-
-function invocation(fixture, extra = {}) {
-	return {
-		contextJson: context(fixture.repository, fixture.workspace),
-		exec: fixture.fake.exec,
-		herdrBin: "fake",
-		...extra,
-	};
-}
-
-function receiptFor(previewResult, decision) {
-	const identity = previewResult.preview;
-	return {
-		document_type: "herdr-conductor-stage3-approval",
-		schema_version: 1,
-		repository_key: identity.repository_key,
-		workspace_id: identity.workspace_id,
-		run_id: identity.run_id,
-		run_generation: identity.run_generation,
-		attempt_generation: identity.attempt_generation,
-		preview_entry_digest: previewResult.preview_entry_digest,
-		decision,
-		statement: STAGE3_APPROVAL_STATEMENTS[decision],
-	};
-}
-
-function record(fixture, receipt) {
-	return recordApprovalFromStdin({
-		configPath: join(fixture.repository, ".herdr-conductor.json"),
-		input: Readable.from([Buffer.from(canonicalJson(receipt))]),
-		exec: fixture.fake.exec,
-	});
+	const result = await stage3HarvestedApplyFixture(seed);
+	assert.equal(result.harvested.lifecycle, "integration_harvested_no_gates");
+	return result;
 }
 
 function applyCasCount(fixture) {
@@ -156,7 +107,7 @@ test("stage3 actions refuse configuration v2 and premature lifecycles", async ()
 	const v3 = await assembledFixture({
 		roles: producerRoles(),
 		seed: 8,
-		configOverrides: structuredClone(applyOverrides),
+		configOverrides: stage3ApplyOverrides(),
 	});
 	git(v3.repository, "update-ref", APPLY_TARGET, v3.result.fork_sha);
 	await expectCodeAsync("operation_conflict", () => preview(invocation(v3)));
@@ -302,7 +253,7 @@ test("a gated run previews byte-ordered verdicts, applies, and archives", async 
 			{ name: "validator", contract_role: "validator", kind: "codex", mode: "gated" },
 		],
 		seed: 11,
-		configOverrides: structuredClone(applyOverrides),
+		configOverrides: stage3ApplyOverrides(),
 	});
 	git(fixture.repository, "update-ref", APPLY_TARGET, fixture.result.fork_sha);
 	const producer = fixture.result.workers[0];
@@ -372,7 +323,7 @@ test("a blocked gate report and a foreign workspace refuse preview", async () =>
 			{ name: "validator", contract_role: "validator", kind: "codex", mode: "gated" },
 		],
 		seed: 12,
-		configOverrides: structuredClone(applyOverrides),
+		configOverrides: stage3ApplyOverrides(),
 	});
 	git(fixture.repository, "update-ref", APPLY_TARGET, fixture.result.fork_sha);
 	const producer = fixture.result.workers[0];

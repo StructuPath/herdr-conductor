@@ -394,6 +394,30 @@ test("stage3 journal entries validate their observed identities by policy", () =
 			subject: { ...applyEntry.subject, kind: "approval" },
 		}),
 	);
+	expectCode("invalid_state", () =>
+		validateJournalEntry({ ...applyEntry, observed_identity: null }),
+	);
+	expectCode("invalid_state", () =>
+		validateJournalEntry({
+			...applyEntry,
+			observed_identity: {
+				...stage3Apply(),
+				attempt_generation: "8".repeat(32),
+			},
+		}),
+	);
+	expectCode("invalid_state", () =>
+		validateJournalEntry({
+			...applyEntry,
+			observed_identity: { ...stage3Apply(), run_id: "run-b2" },
+		}),
+	);
+	expectCode("invalid_state", () =>
+		validateJournalEntry({
+			...applyEntry,
+			observed_identity: { ...stage3Apply(), workspace_id: "wOther" },
+		}),
+	);
 });
 
 test("canonical JSON recursively sorts keys and terminates with one newline", () => {

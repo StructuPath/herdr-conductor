@@ -1,19 +1,7 @@
 import test from "node:test";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
-import {
-	applyStage3,
-	preview,
-	reconcile,
-} from "../scripts/stage1-runtime.mjs";
-import { recordApprovalFromStdin } from "../scripts/approval-recorder.mjs";
-import {
-	STAGE3_APPROVAL_STATEMENTS,
-	canonicalJson,
-} from "../scripts/private-state-schema.mjs";
+import { applyStage3, preview } from "../scripts/stage1-runtime.mjs";
 import {
 	acquireRepositoryLock,
 	loadActiveRun,
@@ -21,75 +9,23 @@ import {
 	releaseRepositoryLock,
 } from "../scripts/state-kernel.mjs";
 import {
+	STAGE3_APPLY_TARGET as APPLY_TARGET,
 	assert,
-	assembledFixture,
-	context,
-	deterministicRandom,
 	expectCode,
 	expectCodeAsync,
 	git,
 	privateDocuments,
-	publishWorkerReport,
+	stage3ApprovedApplyFixture,
+	stage3Invocation,
 } from "./stage1-runtime-helpers.mjs";
 
 const fixtureChild = fileURLToPath(
 	new URL("./fixtures/stage3-crash-child.mjs", import.meta.url),
 );
-const APPLY_TARGET = "refs/heads/release";
 
 async function approvedApplyFixture(seed) {
-	const fixture = await assembledFixture({
-		roles: [
-			{ name: "builder", contract_role: "builder", kind: "pi", mode: "write" },
-		],
-		seed,
-		configOverrides: {
-			version: 3,
-			apply: { target_ref: APPLY_TARGET },
-		},
-	});
-	git(fixture.repository, "update-ref", APPLY_TARGET, fixture.result.fork_sha);
-	const producer = fixture.result.workers[0];
-	mkdirSync(join(producer.cwd, "src"));
-	writeFileSync(join(producer.cwd, "src", "feature.mjs"), "export default 1;\n");
-	git(producer.cwd, "add", "src/feature.mjs");
-	git(producer.cwd, "commit", "-qm", "feature");
-	await publishWorkerReport(fixture, producer);
-	const harvested = await reconcile({
-		contextJson: context(fixture.repository, fixture.workspace),
-		exec: fixture.fake.exec,
-		herdrBin: "fake",
-		random: deterministicRandom(90 + seed),
-	});
-	assert.equal(harvested.lifecycle, "integration_harvested_no_gates");
-	const invocation = {
-		contextJson: context(fixture.repository, fixture.workspace),
-		exec: fixture.fake.exec,
-		herdrBin: "fake",
-	};
-	const previewed = await preview(invocation);
-	const identity = previewed.preview;
-	await recordApprovalFromStdin({
-		configPath: join(fixture.repository, ".herdr-conductor.json"),
-		input: Readable.from([
-			Buffer.from(
-				canonicalJson({
-					document_type: "herdr-conductor-stage3-approval",
-					schema_version: 1,
-					repository_key: identity.repository_key,
-					workspace_id: identity.workspace_id,
-					run_id: identity.run_id,
-					run_generation: identity.run_generation,
-					attempt_generation: identity.attempt_generation,
-					preview_entry_digest: previewed.preview_entry_digest,
-					decision: "approve",
-					statement: STAGE3_APPROVAL_STATEMENTS.approve,
-				}),
-			),
-		]),
-		exec: fixture.fake.exec,
-	});
-	return { fixture, harvested, invocation };
+	const { fixture, harvested } = await stage3ApprovedApplyFixture(seed);
+	return { fixture, harvested, invocation: stage3Invocation(fixture) };
 }
 
 function killedApply(fixture, boundary) {

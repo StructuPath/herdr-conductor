@@ -1035,6 +1035,25 @@ export function validateJournalEntry(value) {
 				);
 			else fail("invalid_state", "operation does not permit observed identity");
 		}
+		if (policy.observedIdentity?.startsWith("stage3-")) {
+			const identity = value.observed_identity;
+			if (identity === null)
+				fail(
+					"invalid_state",
+					"stage3 journal entry requires its observed identity",
+				);
+			if (
+				identity.repository_key !== value.repository_key ||
+				identity.workspace_id !== value.workspace_id ||
+				identity.run_id !== value.run_id ||
+				identity.run_generation !== value.run_generation ||
+				identity.attempt_generation !== value.subject.generation
+			)
+				fail(
+					"invalid_state",
+					"stage3 observed identity does not bind its journal entry",
+				);
+		}
 		if (value.error_code !== null)
 			fail("invalid_state", "observed journal has an error code");
 	} else {

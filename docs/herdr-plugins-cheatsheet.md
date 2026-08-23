@@ -6,11 +6,12 @@ That separate site is not changed or promoted by Conductor Stage 2.
 
 For Conductor `0.4.0`, use this repository's [README](../README.md) as the
 operational authority. Its bounded support is exactly Herdr `0.7.5`, protocol
-`17`, API schema `1`, five attended actions, and one passive board pane.
+`17`, API schema `1`, seven attended actions including `preview` and `apply`,
+and one passive board pane.
 
 Key boundaries:
 
-- configuration v2 has no launch arguments;
+- configuration v2 and v3 have no launch arguments;
 - immutable task and empty private outbox authority precede pane/agent creation;
 - reports use only the exact task-bound bounded-stdin publisher;
 - every worker/reviewer result is an unauthenticated assertion;
