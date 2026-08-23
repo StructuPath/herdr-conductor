@@ -1,6 +1,6 @@
 # Conductor private state v1
 
-**Status:** Stage 2 in Conductor `0.3.0`. All five actions use this state
+**Status:** Stage 2 and Stage 3 in Conductor `0.4.0`. All seven actions use this state
 exclusively through `scripts/stage1-runtime.mjs`. Tasks/outboxes precede agents;
 report collection, deterministic integration, exact-SHA gates, stand-down close
 prefixes, and archive share the same journal authority.
@@ -254,16 +254,18 @@ Herdr `0.7.5`, protocol `17`, schema `1`.
 
 Private state remains cooperative same-user coordination. The repository lock
 does not stop unrelated Git or same-UID mutation after final checks, and Herdr's
-pane close accepts only pane ID, leaving documented TOCTOU. Stage 2 has no
-ambiguous-operation recovery, product cleanup/prune/migration/expiry, Stage 3
-preview/approval/apply, suite adapter, unattended trigger, Browser promotion,
-push, or deployment.
+pane close accepts only pane ID, leaving documented TOCTOU. Stage 3 preview,
+approval, consumption, and apply authority live only in the hash-chained
+journal; the sole ambiguous-operation resolution is the attended apply
+publication, resolved by exact target-ref re-observation. There is no product
+cleanup/prune/migration/expiry, suite adapter, unattended trigger, Browser
+promotion, push, or deployment.
 
 ## Verification
 
 ```bash
 node --test tests/private-state-schema.test.mjs tests/state-kernel.test.mjs \
-  tests/stage1-runtime-*.test.mjs tests/stage2-*.test.mjs
+  tests/stage1-runtime-*.test.mjs tests/stage2-*.test.mjs tests/stage3-*.test.mjs
 npm run check
 ```
 

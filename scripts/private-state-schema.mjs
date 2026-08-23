@@ -527,6 +527,246 @@ function validateMergeIdentity(value, label) {
 	return value;
 }
 
+export const STAGE3_APPROVAL_STATEMENTS = Object.freeze({
+	approve: "I_ATTENDED_THIS_EXACT_PREVIEW_AND_APPROVE",
+	reject: "I_ATTENDED_THIS_EXACT_PREVIEW_AND_REJECT",
+});
+
+function validateStage3RunScope(value, label) {
+	validateKey(value.repository_key, `${label}.repository_key`);
+	validateId(value.workspace_id, `${label}.workspace_id`);
+	validateId(value.run_id, `${label}.run_id`);
+	validateGeneration(value.run_generation, `${label}.run_generation`);
+	validateGeneration(value.attempt_generation, `${label}.attempt_generation`);
+}
+
+export function validateStage3PreviewIdentity(value, label) {
+	exactKeys(
+		value,
+		[
+			"document_type",
+			"schema_version",
+			"repository_key",
+			"workspace_id",
+			"run_id",
+			"run_generation",
+			"attempt_generation",
+			"integration",
+			"gates",
+			"apply",
+		],
+		label,
+	);
+	if (
+		value.document_type !== "herdr-conductor-stage3-preview" ||
+		value.schema_version !== 1
+	)
+		fail("invalid_state", `${label} has the wrong document type or version`);
+	validateStage3RunScope(value, label);
+	exactKeys(
+		value.integration,
+		["target_ref", "starting_sha", "final_sha", "integration_entry_digest"],
+		`${label}.integration`,
+	);
+	validateFullRef(value.integration.target_ref, `${label}.integration.target_ref`);
+	validateGitObjectId(
+		value.integration.starting_sha,
+		`${label}.integration.starting_sha`,
+	);
+	validateGitObjectId(
+		value.integration.final_sha,
+		`${label}.integration.final_sha`,
+	);
+	validateKey(
+		value.integration.integration_entry_digest,
+		`${label}.integration.integration_entry_digest`,
+	);
+	if (!Array.isArray(value.gates) || value.gates.length > 64)
+		fail("invalid_state", `${label}.gates is invalid`);
+	for (const [index, gate] of value.gates.entries()) {
+		const gateLabel = `${label}.gates[${index}]`;
+		exactKeys(
+			gate,
+			[
+				"role_name",
+				"contract_role",
+				"task_digest",
+				"report_digest",
+				"status",
+				"result_kind",
+				"verdict",
+			],
+			gateLabel,
+		);
+		stringMatching(
+			gate.role_name,
+			/^[a-z][a-z0-9_-]{0,31}$/,
+			`${gateLabel}.role_name`,
+		);
+		enumValue(
+			gate.contract_role,
+			new Set(["reviewer", "validator"]),
+			`${gateLabel}.contract_role`,
+		);
+		validateKey(gate.task_digest, `${gateLabel}.task_digest`);
+		validateKey(gate.report_digest, `${gateLabel}.report_digest`);
+		enumValue(gate.status, new Set(["completed"]), `${gateLabel}.status`);
+		const expectedKind =
+			gate.contract_role === "reviewer" ? "review" : "validation";
+		if (gate.result_kind !== expectedKind)
+			fail("invalid_state", `${gateLabel}.result_kind is invalid`);
+		enumValue(
+			gate.verdict,
+			gate.contract_role === "reviewer"
+				? new Set(["approve", "request_changes"])
+				: new Set(["pass", "fail"]),
+			`${gateLabel}.verdict`,
+		);
+		if (
+			index > 0 &&
+			Buffer.compare(
+				Buffer.from(value.gates[index - 1].role_name),
+				Buffer.from(gate.role_name),
+			) >= 0
+		)
+			fail("invalid_state", `${label}.gates is not byte-ordered and unique`);
+	}
+	exactKeys(
+		value.apply,
+		[
+			"target_ref",
+			"observed_sha",
+			"final_sha",
+			"diff_name_status_sha256",
+			"changed_path_count",
+		],
+		`${label}.apply`,
+	);
+	validateFullRef(value.apply.target_ref, `${label}.apply.target_ref`);
+	validateGitObjectId(value.apply.observed_sha, `${label}.apply.observed_sha`);
+	validateGitObjectId(value.apply.final_sha, `${label}.apply.final_sha`);
+	validateKey(
+		value.apply.diff_name_status_sha256,
+		`${label}.apply.diff_name_status_sha256`,
+	);
+	safeInteger(value.apply.changed_path_count, `${label}.apply.changed_path_count`, 1);
+	if (
+		value.apply.target_ref === value.integration.target_ref ||
+		value.apply.observed_sha !== value.integration.starting_sha ||
+		value.apply.final_sha !== value.integration.final_sha ||
+		value.apply.observed_sha === value.apply.final_sha
+	)
+		fail("invalid_state", `${label}.apply does not bind its integration`);
+	return value;
+}
+
+export function validateStage3ApprovalIdentity(value, label) {
+	exactKeys(
+		value,
+		[
+			"document_type",
+			"schema_version",
+			"repository_key",
+			"workspace_id",
+			"run_id",
+			"run_generation",
+			"attempt_generation",
+			"preview_entry_digest",
+			"decision",
+			"statement",
+		],
+		label,
+	);
+	if (
+		value.document_type !== "herdr-conductor-stage3-approval" ||
+		value.schema_version !== 1
+	)
+		fail("invalid_state", `${label} has the wrong document type or version`);
+	validateStage3RunScope(value, label);
+	validateKey(value.preview_entry_digest, `${label}.preview_entry_digest`);
+	enumValue(
+		value.decision,
+		new Set(["approve", "reject"]),
+		`${label}.decision`,
+	);
+	if (value.statement !== STAGE3_APPROVAL_STATEMENTS[value.decision])
+		fail("invalid_state", `${label}.statement is invalid`);
+	return value;
+}
+
+export function validateStage3ConsumptionIdentity(value, label) {
+	exactKeys(
+		value,
+		[
+			"document_type",
+			"schema_version",
+			"repository_key",
+			"workspace_id",
+			"run_id",
+			"run_generation",
+			"attempt_generation",
+			"approval_entry_digest",
+			"preview_entry_digest",
+		],
+		label,
+	);
+	if (
+		value.document_type !== "herdr-conductor-stage3-consumption" ||
+		value.schema_version !== 1
+	)
+		fail("invalid_state", `${label} has the wrong document type or version`);
+	validateStage3RunScope(value, label);
+	validateKey(value.approval_entry_digest, `${label}.approval_entry_digest`);
+	validateKey(value.preview_entry_digest, `${label}.preview_entry_digest`);
+	return value;
+}
+
+export function validateStage3ApplyIdentity(value, label) {
+	exactKeys(
+		value,
+		[
+			"document_type",
+			"schema_version",
+			"repository_key",
+			"workspace_id",
+			"run_id",
+			"run_generation",
+			"attempt_generation",
+			"consumption_entry_digest",
+			"target_ref",
+			"expected_sha",
+			"final_sha",
+			"cas_count",
+			"outcome",
+		],
+		label,
+	);
+	if (
+		value.document_type !== "herdr-conductor-stage3-apply" ||
+		value.schema_version !== 1
+	)
+		fail("invalid_state", `${label} has the wrong document type or version`);
+	validateStage3RunScope(value, label);
+	validateKey(
+		value.consumption_entry_digest,
+		`${label}.consumption_entry_digest`,
+	);
+	validateFullRef(value.target_ref, `${label}.target_ref`);
+	validateGitObjectId(value.expected_sha, `${label}.expected_sha`);
+	validateGitObjectId(value.final_sha, `${label}.final_sha`);
+	enumValue(
+		value.outcome,
+		new Set(["applied", "unapplied"]),
+		`${label}.outcome`,
+	);
+	if (
+		value.expected_sha === value.final_sha ||
+		value.cas_count !== (value.outcome === "applied" ? 1 : 0)
+	)
+		fail("invalid_state", `${label} outcome does not bind its effect`);
+	return value;
+}
+
 export function validateRepositoryDocument(value) {
 	exactKeys(
 		value,
@@ -773,7 +1013,46 @@ export function validateJournalEntry(value) {
 					value.observed_identity,
 					"journal observed_identity",
 				);
+			else if (policy.observedIdentity === "stage3-preview")
+				validateStage3PreviewIdentity(
+					value.observed_identity,
+					"journal observed_identity",
+				);
+			else if (policy.observedIdentity === "stage3-approval")
+				validateStage3ApprovalIdentity(
+					value.observed_identity,
+					"journal observed_identity",
+				);
+			else if (policy.observedIdentity === "stage3-consumption")
+				validateStage3ConsumptionIdentity(
+					value.observed_identity,
+					"journal observed_identity",
+				);
+			else if (policy.observedIdentity === "stage3-apply")
+				validateStage3ApplyIdentity(
+					value.observed_identity,
+					"journal observed_identity",
+				);
 			else fail("invalid_state", "operation does not permit observed identity");
+		}
+		if (policy.observedIdentity?.startsWith("stage3-")) {
+			const identity = value.observed_identity;
+			if (identity === null)
+				fail(
+					"invalid_state",
+					"stage3 journal entry requires its observed identity",
+				);
+			if (
+				identity.repository_key !== value.repository_key ||
+				identity.workspace_id !== value.workspace_id ||
+				identity.run_id !== value.run_id ||
+				identity.run_generation !== value.run_generation ||
+				identity.attempt_generation !== value.subject.generation
+			)
+				fail(
+					"invalid_state",
+					"stage3 observed identity does not bind its journal entry",
+				);
 		}
 		if (value.error_code !== null)
 			fail("invalid_state", "observed journal has an error code");

@@ -9,6 +9,8 @@ const EXPECTED_ACTIONS = [
 	"board",
 	"status",
 	"harvest",
+	"preview",
+	"apply",
 	"stand-down",
 ];
 const EXPECTED_PANES = ["board-pane"];
@@ -30,7 +32,7 @@ const CANONICAL_VERIFICATION_FILES = [
 	"SECURITY.md",
 	"docs/private-state-v1.md",
 ];
-const STAGE_RUNTIME_TEST = /^(?:stage1-runtime-.*|stage2-.*)\.test\.mjs$/;
+const STAGE_RUNTIME_TEST = /^(?:stage1-runtime-.*|stage2-.*|stage3-.*)\.test\.mjs$/;
 const CURRENT_CLAIM_FILES = [
 	"README.md",
 	"SECURITY.md",
@@ -296,6 +298,20 @@ export function validateDocs(root) {
 			"README.md",
 			"there is no `CONDUCTOR_REPO`, ambient-cwd, process-ID, or newest-global fallback",
 		],
+		[
+			"README.md",
+			"Approval receipts remain unauthenticated same-UID operator records",
+		],
+		["README.md", "A spent receipt never authorizes a second compare-and-swap"],
+		["README.md", "Resolution exists only for the apply publication"],
+		[
+			"SECURITY.md",
+			"an approve receipt is durably consumed before any apply effect",
+		],
+		[
+			"SECURITY.md",
+			"Ambiguous-operation resolution exists only for the Stage 3 apply publication",
+		],
 		["README.md", "`harvest` is explicitly invoked and attended"],
 		["README.md", "`stand-down` closes only panes"],
 		["README.md", "B4 live smoke report"],
@@ -349,7 +365,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === sourcePath) {
 		process.exitCode = 1;
 	} else {
 		process.stdout.write(
-			`Docs valid: ${result.actionCount} actions agree and ${result.currentDocumentCount} current documents retain Stage 2 boundaries.\n`,
+			`Docs valid: ${result.actionCount} actions agree and ${result.currentDocumentCount} current documents retain release boundaries.\n`,
 		);
 	}
 }

@@ -24,12 +24,14 @@ import {
 	createRun,
 	inspectRepositoryLock,
 	loadActiveRun,
+	loadUncertainApplyRun,
 	openRepositoryStore,
 	performJournaledOperation,
 	publishExclusiveJson,
 	readPrivateJson,
 	releaseRepositoryLock,
 	resolveGitCommonDirectory,
+	resolveUncertainApplyPublication,
 	writeAtomicJson,
 } from "../scripts/state-kernel.mjs";
 import {
@@ -1017,6 +1019,117 @@ test("exclusive publication never overwrites an active pointer", () => {
 			root: context.stateRoot,
 		}).revision,
 		0,
+	);
+	releaseRepositoryLock(lock);
+});
+
+test("uncertain apply publication resolves only by exact observation", async () => {
+	const context = setup();
+	const { lock } = startRun(context);
+	await expectCodeAsync("recovery_required", () =>
+		performJournaledOperation(
+			lock,
+			operation({
+				operationId: "apply-publish-attempt",
+				operationType: "apply.publish",
+				subject: { kind: "apply", id: "apply", generation: SUBJECT_GENERATION },
+				effect: async () => {
+					throw new Error("crash before observation");
+				},
+			}),
+		),
+	);
+	expectCode("recovery_required", () =>
+		loadActiveRun(context.store, { workspaceId: "wB1" }),
+	);
+	const identity = {
+		document_type: "herdr-conductor-stage3-apply",
+		schema_version: 1,
+		repository_key: context.store.repository.key,
+		workspace_id: "wB1",
+		run_id: "run-b1",
+		run_generation: GENERATION,
+		attempt_generation: SUBJECT_GENERATION,
+		consumption_entry_digest: REQUEST_DIGEST,
+		target_ref: "refs/heads/release",
+		expected_sha: context.forkSha,
+		final_sha: "e".repeat(40),
+		cas_count: 0,
+		outcome: "unapplied",
+	};
+	await expectCodeAsync("operation_conflict", () =>
+		resolveUncertainApplyPublication(lock, {
+			workspaceId: "wB1",
+			operationId: "apply-publish-other",
+			resolve: () => ({
+				resultDigest: RESULT_DIGEST,
+				observedIdentity: identity,
+			}),
+		}),
+	);
+	await expectCodeAsync("invalid_state", () =>
+		resolveUncertainApplyPublication(lock, {
+			workspaceId: "wB1",
+			operationId: "apply-publish-attempt",
+			resolve: () => ({ resultDigest: RESULT_DIGEST }),
+		}),
+	);
+	const uncertain = loadUncertainApplyRun(context.store, {
+		workspaceId: "wB1",
+	});
+	assert.equal(uncertain.uncertain.operation_id, "apply-publish-attempt");
+	const resolved = await resolveUncertainApplyPublication(lock, {
+		workspaceId: "wB1",
+		operationId: "apply-publish-attempt",
+		resolve: (entry) => {
+			assert.equal(entry.operation_type, "apply.publish");
+			assert.notEqual(entry.phase, "observed");
+			return { resultDigest: RESULT_DIGEST, observedIdentity: identity };
+		},
+	});
+	assert.equal(resolved.resolved, true);
+	assert.equal(resolved.resultDigest, RESULT_DIGEST);
+	const active = loadActiveRun(context.store, { workspaceId: "wB1" });
+	const entry = active.journal.find(
+		(candidate) => candidate.operation_id === "apply-publish-attempt",
+	);
+	assert.equal(entry.phase, "observed");
+	assert.deepEqual(entry.observed_identity, identity);
+	assert.equal(active.state.journal_head, entry.entry_digest);
+	await expectCodeAsync("recovery_required", () =>
+		resolveUncertainApplyPublication(lock, {
+			workspaceId: "wB1",
+			operationId: "apply-publish-attempt",
+			resolve: () => ({
+				resultDigest: RESULT_DIGEST,
+				observedIdentity: identity,
+			}),
+		}),
+	);
+	releaseRepositoryLock(lock);
+});
+
+test("apply resolution refuses foreign uncertain operations", async () => {
+	const context = setup();
+	const { lock } = startRun(context);
+	await expectCodeAsync("recovery_required", () =>
+		performJournaledOperation(
+			lock,
+			operation({
+				effect: async () => {
+					throw new Error("pane crash");
+				},
+			}),
+		),
+	);
+	expectCode("recovery_required", () =>
+		loadUncertainApplyRun(context.store, { workspaceId: "wB1" }),
+	);
+	await expectCodeAsync("recovery_required", () =>
+		resolveUncertainApplyPublication(lock, {
+			workspaceId: "wB1",
+			resolve: () => ({ resultDigest: RESULT_DIGEST, observedIdentity: null }),
+		}),
 	);
 	releaseRepositoryLock(lock);
 });

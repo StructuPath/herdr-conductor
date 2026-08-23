@@ -1348,6 +1348,42 @@ export function inspectRepositoryLock(store) {
 	return inspectLock(store);
 }
 
+export function reclaimDeadRepositoryLock(store, { operationId, fault } = {}) {
+	validateId(operationId, "lock operation id");
+	const existing = inspectLock(store);
+	if (existing.status === "locked") {
+		let dead = false;
+		try {
+			process.kill(existing.owner.pid, 0);
+		} catch (error) {
+			if (error?.code !== "ESRCH") throw error;
+			dead = true;
+		}
+		if (!dead)
+			throw kernelError(
+				"lock_busy",
+				"repository mutation lock is already held",
+			);
+		if (existing.owner.operation_id !== operationId)
+			throw kernelError(
+				"recovery_required",
+				"operation_uncertain: retained dead-process lock requires recovery",
+			);
+		try {
+			unlinkSync(join(store.lockDir, "owner.json"));
+			rmdirSync(store.lockDir);
+			fsyncDirectory(store.repositoryDir);
+		} catch (error) {
+			throw kernelError(
+				"lock_unknown",
+				"dead repository lock cannot be reclaimed",
+				error,
+			);
+		}
+	}
+	return acquireRepositoryLock(store, { operationId, fault });
+}
+
 export function acquireRepositoryLock(store, { operationId, fault } = {}) {
 	validateId(operationId, "lock operation id");
 	try {

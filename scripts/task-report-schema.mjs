@@ -8,6 +8,7 @@ import {
 } from "./private-state-schema.mjs";
 
 export const STAGE2_CONFIG_VERSION = 2;
+export const STAGE3_CONFIG_VERSION = 3;
 export const TASK_MAX_BYTES = 262_144;
 export const REPORT_MAX_BYTES = 1_048_576;
 export const PUBLICATION_METADATA_MAX_BYTES = 16_384;
@@ -256,14 +257,7 @@ function gitSource(value, label = "source") {
 		);
 		canonicalPath(value.root, `${label}.root`);
 		commonDirectory(value.common_dir, `${label}.common_dir`);
-		matching(value.branch_ref, FULL_REF, `${label}.branch_ref`);
-		if (
-			value.branch_ref.includes("\\") ||
-			value.branch_ref
-				.split("/")
-				.some((part) => !part || part === "." || part === "..")
-		)
-			invalid(`${label}.branch_ref`);
+		fullRefWithoutTraversal(value.branch_ref, `${label}.branch_ref`);
 		for (const field of ["fork_sha", "expected_sha", "tree_sha"])
 			matching(value[field], SHA, `${label}.${field}`);
 		matching(
@@ -417,6 +411,22 @@ function assignment(value, label = "assignment") {
 				invalid(`${label} path overlap`);
 }
 
+function fullRefWithoutTraversal(value, label) {
+	matching(value, FULL_REF, label);
+	if (
+		value.includes("\\") ||
+		value.split("/").some((part) => !part || part === "." || part === "..")
+	)
+		invalid(label);
+	return value;
+}
+
+function applySelector(value) {
+	if (value === null) return;
+	exact(value, ["target_ref"], "configuration.apply");
+	fullRefWithoutTraversal(value.target_ref, "configuration.apply.target_ref");
+}
+
 function stateRootSelector(value) {
 	exact(
 		value,
@@ -477,13 +487,19 @@ export function parseStage2ConfigBytes(bytes) {
 		throw error;
 	}
 	plain(value, "configuration");
-	if (value.version !== STAGE2_CONFIG_VERSION)
-		fail("wrong_version", "configuration version must be 2");
+	if (
+		value.version !== STAGE2_CONFIG_VERSION &&
+		value.version !== STAGE3_CONFIG_VERSION
+	)
+		fail("wrong_version", "configuration version must be 2 or 3");
 	exact(
 		value,
-		["version", "state_root", "worktree_root", "roles"],
+		value.version === STAGE3_CONFIG_VERSION
+			? ["version", "state_root", "worktree_root", "roles", "apply"]
+			: ["version", "state_root", "worktree_root", "roles"],
 		"configuration",
 	);
+	if (value.version === STAGE3_CONFIG_VERSION) applySelector(value.apply);
 	stateRootSelector(value.state_root);
 	validateRelativePath(value.worktree_root, "configuration.worktree_root");
 	if (!Array.isArray(value.roles) || value.roles.length > 64)

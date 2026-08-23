@@ -2,18 +2,21 @@
 
 ## Supported scope
 
-Conductor `0.3.0` provides Stage 2 **attended-operational** strict task/report
-contracts on exactly Herdr `0.7.5`, protocol `17`, API schema `1`, under one
-cooperative OS user. The five actions preserve physical repository/workspace/run
-identity, strict private state, one repository mutation lock, journaled crash
-truth, deterministic zero-or-one target compare-and-swap, exact-SHA gate sources,
+Conductor `0.4.0` provides Stage 2 **attended-operational** strict task/report
+contracts and the Stage 3 attended single-ref apply on exactly Herdr `0.7.5`,
+protocol `17`, API schema `1`, under one cooperative OS user. The seven actions
+preserve physical repository/workspace/run identity, strict private state, one
+repository mutation lock, journaled crash truth, deterministic zero-or-one
+target compare-and-swap for integration and for apply, exact-SHA gate sources,
 and exact-identity stand-down/archive.
 
 These controls prevent accidental authority confusion; they are not
 authentication, sandboxing, signatures, or remote attestation. Worker-reported
 `delivered`, `approve`, `pass`, command/criterion results, identity, evidence, and
 external reviewer identity/independence/findings are unauthenticated assertions.
-They do not authorize apply, release, or any other effect.
+They do not by themselves authorize apply, release, or any other effect. Stage 3
+approval receipts are unauthenticated same-UID operator records: fixed-statement
+journal entries, not signatures, credentials, or delegated authority.
 
 ## Preserved boundaries
 
@@ -33,10 +36,20 @@ They do not authorize apply, release, or any other effect.
 - Stand-down binds one deterministic close set and closes only an exact live
   pane/agent/cwd tuple. It retains every product worktree, branch, task, outbox,
   report, gate source, artifact, recording, log, and operation record.
-- No product cleanup, prune, migration, expiry, adoption, ambiguous recovery,
-  preview, approval receipt, approval consumption, apply, suite adapter,
-  unattended launch, Browser promotion, site repin, push, or deployment is
-  implemented.
+- Stage 3 preview performs zero Git mutation; an approve receipt is durably
+  consumed before any apply effect and never authorizes a second
+  compare-and-swap; the apply moves exactly one configured local ref by
+  fast-forward from its previewed SHA, or durably records an unapplied outcome
+  with zero CAS when the target drifted. An uncertain apply publication is
+  resolved only by attended exact re-observation of that ref, and any foreign
+  observation fails closed permanently. The attended apply may reclaim a
+  repository lock only from a dead process holding exactly its own apply
+  operation id; the pid-liveness check remains cooperative, not
+  authentication.
+- No product cleanup, prune, migration, expiry, adoption, suite adapter,
+  unattended launch, Browser promotion, site repin, push, remote publication,
+  or deployment is implemented. Ambiguous-operation resolution exists only for
+  the Stage 3 apply publication.
 
 ## Residual risks
 
@@ -45,8 +58,10 @@ They do not authorize apply, release, or any other effect.
   authenticate it.
 - Final filesystem/Git checks and Herdr pane-ID close retain same-user TOCTOU
   windows. Herdr `0.7.5` offers no conditional close tuple.
-- A crash after possible Git CAS, pane close, archive publication, or evidence
-  unlink remains uncertain. Stage 2 does not infer success or replay it.
+- A crash after possible pane close, archive publication, or evidence unlink
+  remains uncertain; Stage 2 does not infer success or replay it. A crash
+  around the Stage 3 apply CAS is resolved only by attended exact
+  re-observation, never inferred or replayed.
 - Retained product state consumes cumulative disk; no product expiry or cleanup
   API exists.
 - Only 40-hex SHA-1-width Git repositories are supported.
@@ -100,5 +115,6 @@ npm run test:stage2
 shellcheck --shell=bash scripts/*.sh
 python3 -m py_compile scripts/harness-fs-helper.py
 go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
-node --test tests/stage1-runtime-*.test.mjs tests/stage2-*.test.mjs
+node --test tests/stage1-runtime-*.test.mjs tests/stage2-*.test.mjs \
+  tests/stage3-*.test.mjs
 ```

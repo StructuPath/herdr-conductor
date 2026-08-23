@@ -18,11 +18,14 @@ import { dirname, join, relative } from "node:path";
 import {
 	assemble,
 	parsePluginContext,
+	preview,
 	readStatus,
 	reconcile,
 	standDown,
 } from "../scripts/stage1-runtime.mjs";
+import { recordApprovalFromStdin } from "../scripts/approval-recorder.mjs";
 import {
+	STAGE3_APPROVAL_STATEMENTS,
 	canonicalJson,
 	StateKernelError,
 	parseStrictJsonBytes,
@@ -335,6 +338,29 @@ class FakeHerdr {
 				);
 			} else if (args[2] === "-c" && args[3] === "diff.renames=false") {
 				assert.equal(args[4], "diff");
+			} else if (args[2] === "show-ref") {
+				assert.deepEqual(args, [
+					"-C",
+					args[1],
+					"show-ref",
+					"--verify",
+					"--hash",
+					args[5],
+				]);
+				assert.match(args[5], /^refs\//);
+			} else if (args[2] === "diff") {
+				assert.deepEqual(args, [
+					"-C",
+					args[1],
+					"diff",
+					"--name-status",
+					"--no-renames",
+					"-z",
+					args[6],
+					args[7],
+				]);
+				assert.match(args[6], /^[a-f0-9]{40}$/);
+				assert.match(args[7], /^[a-f0-9]{40}$/);
 			} else if (args[2] === "symbolic-ref") {
 				assert.deepEqual(args, ["-C", args[1], "symbolic-ref", "-q", "HEAD"]);
 			} else if (args[2] === "worktree") {
@@ -813,6 +839,7 @@ async function assembledFixture({
 	seed = 1,
 	random = deterministicRandom(seed),
 	stateRoot = join(temp("conductor-b2-state-"), "state"),
+	configOverrides = {},
 	fault,
 } = {}) {
 	const fake = new FakeHerdr();
@@ -820,13 +847,88 @@ async function assembledFixture({
 	stateRoot = realpathSync(stateRoot);
 	const result = await assemble({
 		contextJson: context(repository, workspace),
-		configPath: config(repository, roles, {}, stateRoot),
+		configPath: config(repository, roles, configOverrides, stateRoot),
 		exec: fake.exec,
 		herdrBin: "fake-herdr",
 		random,
 		fault,
 	});
 	return { repository, workspace, stateRoot, fake, result };
+}
+
+const STAGE3_APPLY_TARGET = "refs/heads/release";
+
+function stage3ProducerRoles() {
+	return [
+		{ name: "builder", contract_role: "builder", kind: "pi", mode: "write" },
+	];
+}
+
+function stage3ApplyOverrides() {
+	return { version: 3, apply: { target_ref: STAGE3_APPLY_TARGET } };
+}
+
+function stage3Invocation(fixture, extra = {}) {
+	return {
+		contextJson: context(fixture.repository, fixture.workspace),
+		exec: fixture.fake.exec,
+		herdrBin: "fake",
+		...extra,
+	};
+}
+
+async function stage3HarvestedApplyFixture(
+	seed,
+	{ roles = stage3ProducerRoles() } = {},
+) {
+	const fixture = await assembledFixture({
+		roles,
+		seed,
+		configOverrides: stage3ApplyOverrides(),
+	});
+	git(fixture.repository, "update-ref", STAGE3_APPLY_TARGET, fixture.result.fork_sha);
+	const producer = fixture.result.workers[0];
+	mkdirSync(join(producer.cwd, "src"));
+	writeFileSync(join(producer.cwd, "src", "feature.mjs"), "export default 1;\n");
+	git(producer.cwd, "add", "src/feature.mjs");
+	git(producer.cwd, "commit", "-qm", "feature");
+	await publishWorkerReport(fixture, producer);
+	const harvested = await reconcile(
+		stage3Invocation(fixture, { random: deterministicRandom(40 + seed) }),
+	);
+	return { fixture, harvested };
+}
+
+function stage3Receipt(previewResult, decision) {
+	const identity = previewResult.preview;
+	return {
+		document_type: "herdr-conductor-stage3-approval",
+		schema_version: 1,
+		repository_key: identity.repository_key,
+		workspace_id: identity.workspace_id,
+		run_id: identity.run_id,
+		run_generation: identity.run_generation,
+		attempt_generation: identity.attempt_generation,
+		preview_entry_digest: previewResult.preview_entry_digest,
+		decision,
+		statement: STAGE3_APPROVAL_STATEMENTS[decision],
+	};
+}
+
+function recordStage3Receipt(fixture, receipt) {
+	return recordApprovalFromStdin({
+		configPath: join(fixture.repository, ".herdr-conductor.json"),
+		input: Readable.from([Buffer.from(canonicalJson(receipt))]),
+		exec: fixture.fake.exec,
+	});
+}
+
+async function stage3ApprovedApplyFixture(seed) {
+	const { fixture, harvested } = await stage3HarvestedApplyFixture(seed);
+	assert.equal(harvested.lifecycle, "integration_harvested_no_gates");
+	const previewed = await preview(stage3Invocation(fixture));
+	await recordStage3Receipt(fixture, stage3Receipt(previewed, "approve"));
+	return { fixture, harvested, previewed };
 }
 
 export {
@@ -868,4 +970,12 @@ export {
 	buildWorkerReport,
 	publishWorkerReport,
 	assembledFixture,
+	STAGE3_APPLY_TARGET,
+	stage3ProducerRoles,
+	stage3ApplyOverrides,
+	stage3Invocation,
+	stage3HarvestedApplyFixture,
+	stage3Receipt,
+	recordStage3Receipt,
+	stage3ApprovedApplyFixture,
 };

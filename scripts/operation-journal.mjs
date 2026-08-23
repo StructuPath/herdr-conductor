@@ -790,3 +790,128 @@ export async function performJournaledOperation(
 		throw error;
 	}
 }
+
+export function loadUncertainApplyRun(store, { workspaceId } = {}) {
+	const workspace = workspacePaths(store, workspaceId);
+	const pointers = scanActivePointers(store, workspace);
+	if (pointers.length !== 1)
+		throw kernelError(
+			"bookkeeping_unknown",
+			"apply resolution requires exactly one active pointer",
+		);
+	const runStates = scanRunStates(store, workspace);
+	if (runStates.some(({ activationGuard }) => activationGuard !== null))
+		throw kernelError(
+			"recovery_required",
+			"workspace has an unresolved activation guard",
+		);
+	const activeStates = runStates.filter(({ state }) => state.status === "active");
+	const nonArchived = runStates.filter(({ state }) => state.status !== "archived");
+	if (activeStates.length !== 1 || nonArchived.length !== 1)
+		throw kernelError(
+			"bookkeeping_unknown",
+			"active pointer does not have one exclusive non-archived run state",
+		);
+	const pointer = pointers[0].value;
+	const selected = activeStates[0];
+	compareRunIdentity(store, workspace, pointer, selected.state);
+	const active = {
+		store,
+		workspace,
+		pointer,
+		pointerPath: pointers[0].path,
+		state: selected.state,
+		paths: selected.paths,
+		journal: [],
+	};
+	active.journal = scanJournal(store, active, { allowGuards: true });
+	const unresolved = active.journal.filter((entry) => entry.phase !== "observed");
+	if (unresolved.length !== 1 || active.journal.at(-1) !== unresolved[0])
+		throw kernelError(
+			"recovery_required",
+			"apply resolution requires exactly one terminal unresolved operation",
+		);
+	const entry = unresolved[0];
+	if (entry.operation_type !== "apply.publish")
+		throw kernelError(
+			"recovery_required",
+			"the unresolved operation is not an apply publication",
+		);
+	const guards = active.journal.guards;
+	if (
+		guards.length > 1 ||
+		(guards.length === 1 &&
+			(guards[0].operation_id !== entry.operation_id ||
+				guards[0].sequence !== entry.sequence ||
+				guards[0].phase !== "intent"))
+	)
+		throw kernelError(
+			"recovery_required",
+			"apply resolution has foreign uncertainty guards",
+		);
+	if (active.state.journal_head !== entry.entry_digest)
+		throw kernelError(
+			"bookkeeping_unknown",
+			"the uncertain apply publication is not the journal head",
+		);
+	active.uncertain = entry;
+	active.uncertainGuard = guards[0] ?? null;
+	return active;
+}
+
+export async function resolveUncertainApplyPublication(
+	handle,
+	{ workspaceId, operationId, resolve, fault } = {},
+) {
+	assertLock(handle);
+	if (typeof resolve !== "function")
+		throw kernelError("invalid_state", "apply resolution requires a resolver");
+	const active = loadUncertainApplyRun(handle.store, { workspaceId });
+	const entry = active.uncertain;
+	if (operationId !== undefined && entry.operation_id !== operationId)
+		throw kernelError(
+			"operation_conflict",
+			"apply resolution does not match the uncertain operation",
+		);
+	const observation = await resolve(entry, active);
+	if (
+		observation === null ||
+		typeof observation !== "object" ||
+		Array.isArray(observation) ||
+		Object.keys(observation).sort().join(",") !== "observedIdentity,resultDigest"
+	)
+		throw kernelError(
+			"invalid_state",
+			"apply resolution returned an invalid observation",
+		);
+	validateKey(observation.resultDigest, "result digest");
+	checkpoint(fault, "resolution.after_observation");
+	assertLock(handle);
+	const observed = transitionJournalEntry(
+		active,
+		journalPath(active, entry.sequence, entry.operation_id),
+		entry,
+		{
+			phase: "observed",
+			resultDigest: observation.resultDigest,
+			observedIdentity: observation.observedIdentity,
+			errorCode: null,
+			fault,
+			scope: "journal_resolution",
+		},
+	);
+	if (active.uncertainGuard)
+		removePrivateGuard(
+			journalGuardPath(active, entry.sequence, entry.operation_id),
+			{
+				parent: active.paths.operationGuardsDir,
+				fault,
+				scope: "journal_resolution_guard_remove",
+			},
+		);
+	return {
+		resolved: true,
+		resultDigest: observed.result_digest,
+		sequence: entry.sequence,
+	};
+}
