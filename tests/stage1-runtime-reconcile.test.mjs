@@ -58,6 +58,7 @@ test("report-first reconcile and stand-down retain Git and product inventory", a
 		"refs/heads",
 	);
 	const reconciled = await reconcile({
+		herdrBin: "fake",
 		contextJson: context(fixture.repository, fixture.workspace),
 		stateRoot: fixture.stateRoot,
 		exec: fixture.fake.exec,
@@ -177,6 +178,7 @@ test("source, target, journal, registration, and lock failures perform zero CAS"
 		const before = updateRefCount(fixture);
 		const invocation = () =>
 			reconcile({
+				herdrBin: "fake",
 				contextJson: context(fixture.repository, fixture.workspace),
 				stateRoot: fixture.stateRoot,
 				exec: reconcileExec,
@@ -199,6 +201,7 @@ test("source and target races immediately before CAS perform zero CAS", async ()
 		let injected = false;
 		await assert.rejects(() =>
 			reconcile({
+				herdrBin: "fake",
 				contextJson: context(fixture.repository, fixture.workspace),
 				stateRoot: fixture.stateRoot,
 				exec: fixture.fake.exec,
@@ -229,6 +232,7 @@ test("post-CAS ref, tracked-worktree, and staged-index drift never publish recon
 		await assert.rejects(
 			() =>
 				reconcile({
+					herdrBin: "fake",
 					contextJson: context(fixture.repository, fixture.workspace),
 					stateRoot: fixture.stateRoot,
 					exec: fixture.fake.exec,
@@ -273,6 +277,7 @@ test("post-CAS ref, tracked-worktree, and staged-index drift never publish recon
 		const attempts = updateRefCount(fixture);
 		await assert.rejects(() =>
 			reconcile({
+				herdrBin: "fake",
 				contextJson: context(fixture.repository, fixture.workspace),
 				stateRoot: fixture.stateRoot,
 				exec: fixture.fake.exec,
@@ -296,6 +301,7 @@ test("post-CAS synchronization checkpoints preserve concurrent tracked edits and
 		await assert.rejects(
 			() =>
 				reconcile({
+					herdrBin: "fake",
 					contextJson: context(fixture.repository, fixture.workspace),
 					exec: fixture.fake.exec,
 					fault(name) {
@@ -349,6 +355,7 @@ test("CAS failure cannot synchronize the target worktree", async () => {
 	await assert.rejects(
 		() =>
 			reconcile({
+				herdrBin: "fake",
 				contextJson: context(fixture.repository, fixture.workspace),
 				stateRoot: fixture.stateRoot,
 				exec: racingExec,
@@ -373,6 +380,7 @@ test("cross-scope callers and conflicting complete producer sets perform zero CA
 		const before = updateRefCount(isolated);
 		await assert.rejects(() =>
 			reconcile({
+				herdrBin: "fake",
 				contextJson: context(repository, workspace),
 				stateRoot: isolated.stateRoot,
 				exec: isolated.fake.exec,
@@ -404,6 +412,7 @@ test("cross-scope callers and conflicting complete producer sets perform zero CA
 	}
 	await assert.rejects(() =>
 		reconcile({
+			herdrBin: "fake",
 			contextJson: context(fixture.repository, fixture.workspace),
 			stateRoot: fixture.stateRoot,
 			exec: fixture.fake.exec,

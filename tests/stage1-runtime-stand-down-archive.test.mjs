@@ -643,6 +643,7 @@ test("pre-intent integration failure is retryable while failed pane close is nev
 			operation === "merge"
 				? () =>
 						reconcile({
+							herdrBin: "fake",
 							contextJson: context(fixture.repository, fixture.workspace),
 							stateRoot: fixture.stateRoot,
 							exec: failingExec,
