@@ -234,10 +234,15 @@ output-parent binding, and returns one out-of-band completion digest.
 
 ## Verification
 
+See the [operational readiness guide](docs/readiness.md) for first-run setup and
+remaining evidence gaps, and the
+[suite Conductor guide](https://herdr.structupath.ai/docs/conductor/)
+for cross-project documentation.
+
 ```bash
 npm run check
 npm run test:stage2
-bash -n scripts/*.sh
+npm run check:shell
 shellcheck --shell=bash scripts/*.sh
 python3 -m py_compile scripts/harness-fs-helper.py
 go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
