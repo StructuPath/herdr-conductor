@@ -22,6 +22,7 @@ import {
 	git,
 	publishWorkerReport,
 	readStatus,
+	readJournals,
 	recordStage3Receipt as record,
 	stage3ApplyOverrides,
 	stage3HarvestedApplyFixture,
@@ -45,6 +46,46 @@ function applyCasCount(fixture) {
 			args.includes(APPLY_TARGET),
 	).length;
 }
+
+test("argument-free stand-down completes an applied run without permitting abandonment", async () => {
+	const { fixture, harvested } = await harvestedApplyFixture(31);
+	const previewed = await preview(invocation(fixture));
+	await record(fixture, receiptFor(previewed, "approve"));
+	await applyStage3(invocation(fixture));
+	const beforeRef = git(fixture.repository, "rev-parse", APPLY_TARGET);
+	const effectsBefore = fixture.fake.effects;
+	await expectCodeAsync("bookkeeping_unknown", () =>
+		standDown(invocation(fixture, { reason: "operator_abandoned" })),
+	);
+	assert.equal(fixture.fake.effects, effectsBefore);
+	assert.equal(
+		readJournals(fixture.stateRoot).filter(
+			(entry) => entry.operation_type === "run.stand-down.begin",
+		).length,
+		0,
+	);
+	const stood = await standDown(invocation(fixture));
+	assert.equal(stood.archived, true);
+	assert.deepEqual(
+		stood.closed,
+		fixture.result.workers.map(({ pane_id }) => pane_id),
+	);
+	const begin = readJournals(fixture.stateRoot).find(
+		(entry) =>
+			entry.operation_type === "run.stand-down.begin" &&
+			entry.phase === "observed",
+	);
+	assert.equal(begin.observed_identity.source_state, "applied");
+	assert.equal(begin.observed_identity.reason, "normal_completion");
+	assert.equal(begin.observed_identity.outcome, "completed");
+	assert.equal(beforeRef, harvested.integration.final_sha);
+	assert.equal(git(fixture.repository, "rev-parse", APPLY_TARGET), beforeRef);
+	const effectsAfter = fixture.fake.effects;
+	const replayed = await standDown(invocation(fixture));
+	assert.equal(replayed.archived, true);
+	assert.equal(replayed.replayed, true);
+	assert.equal(fixture.fake.effects, effectsAfter);
+});
 
 test("preview, approval, consumption, and apply move the target exactly once", async () => {
 	const { fixture, harvested } = await harvestedApplyFixture(1);

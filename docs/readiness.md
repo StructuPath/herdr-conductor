@@ -42,8 +42,11 @@ the independent exact-source review described in [CONTRIBUTING](../CONTRIBUTING.
 
 Priorities for subsequent work:
 
-- Obtain candidate-specific live evidence for Stage 3 before making broader
-  deployment claims; preserve the separate independent review requirement.
+- The [installed-action developer smoke](evidence/2026-09-14-developer-installed-action-smoke.md)
+  covers Stage 3 preview, attended apply, replay, and completed stand-down on
+  exact Herdr 0.7.5 with deterministic local workers. Validate real agent
+  integrations before broader deployment claims; preserve the separate formal
+  evidence and independent review requirements.
 - Test additional Herdr versions explicitly before widening the exact runtime
   contract or the website's compatibility claims.
 - Improve operator guidance for retained resources and uncertain pane/agent
