@@ -2044,7 +2044,9 @@ export async function standDown({
 					"stand-down restart reason differs from observed authority",
 				);
 		} else {
-			const selectedReason = reason ?? "operator_abandoned";
+			const selectedReason =
+				reason ??
+				(lifecycle.state === "applied" ? "normal_completion" : "operator_abandoned");
 			standDownReasonForState(lifecycle.state, selectedReason);
 			standDownIdentity = {
 				document_type: "herdr-conductor-stage2-stand-down",
