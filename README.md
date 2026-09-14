@@ -207,6 +207,11 @@ attached-agent tuple is also required when an agent was observed.
 
 ## Evidence and release boundary
 
+The [2026-09-14 installed-action developer smoke](docs/evidence/2026-09-14-developer-installed-action-smoke.md)
+records a fresh isolated Herdr 0.7.5 run through Stage 3 apply and stand-down,
+including the completed-run stand-down fix. It uses deterministic local worker
+fixtures and is separate from formal release evidence and real model integration.
+
 Retained Stage 1 B0/B4 artifacts remain historical compatibility evidence. The
 [B4 live smoke report](docs/evidence/2026-07-28-stage1-b4-live-smoke.md) is
 validated against its recorded candidate Git tree, not current Stage 2 bytes.
