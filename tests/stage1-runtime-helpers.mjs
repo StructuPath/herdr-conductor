@@ -391,6 +391,15 @@ class FakeHerdr {
 			assert.deepEqual(args, ["api", "schema", "--json"]);
 			return JSON.stringify({ protocol: 17, schema_version: 1 });
 		}
+		if (args.join(" ") === "status server --json")
+			return JSON.stringify({
+				status: "running",
+				running: true,
+				version: "0.7.5",
+				protocol: 17,
+				compatible: true,
+				restart_needed: false,
+			});
 		if (args[0] === "pane" && args[1] === "split") {
 			const cwd = args[6];
 			const role = this.roles.find(
@@ -724,11 +733,24 @@ function inspectKilledOperation({
 				if (args[0] === "--version") return "herdr 0.7.5";
 				if (args.join(" ") === "api schema --json")
 					return JSON.stringify({ protocol: 17, schema_version: 1 });
+				if (args.join(" ") === "status server --json")
+					return JSON.stringify({
+						status: "running",
+						running: true,
+						version: "0.7.5",
+						protocol: 17,
+						compatible: true,
+						restart_needed: false,
+					});
 				assert.fail("unresolved operation reached a live identity probe");
 			},
 		}),
 	);
-	assert.deepEqual(runtimeProbes, [["--version"], ["api", "schema", "--json"]]);
+	assert.deepEqual(runtimeProbes, [
+		["--version"],
+		["api", "schema", "--json"],
+		["status", "server", "--json"],
+	]);
 	return { run, current, guards, lockOwner };
 }
 

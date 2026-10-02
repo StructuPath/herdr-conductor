@@ -49,6 +49,15 @@ const exec = (command, args, options = {}) => {
 	if (args.length === 1 && args[0] === "--version") return "herdr 0.7.5";
 	if (args[0] === "api" && args[1] === "schema")
 		return JSON.stringify({ protocol: 17, schema_version: 1 });
+	if (args.join(" ") === "status server --json")
+		return JSON.stringify({
+			status: "running",
+			running: true,
+			version: "0.7.5",
+			protocol: 17,
+			compatible: true,
+			restart_needed: false,
+		});
 	const live = JSON.parse(readFileSync(livePath, "utf8"));
 	let result;
 	if (args[0] === "pane" && args[1] === "list")

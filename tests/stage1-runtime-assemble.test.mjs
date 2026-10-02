@@ -127,6 +127,10 @@ test("strict fake Git/Herdr calls see durable intent before every effect and pre
 	assert.deepEqual(fake.log, [
 		{ command: "fake-herdr", args: ["--version"] },
 		{ command: "fake-herdr", args: ["api", "schema", "--json"] },
+		{
+			command: "fake-herdr",
+			args: ["status", "server", "--json"],
+		},
 		{ command: "fake-herdr", args: ["pane", "get", "wB2:p0"] },
 		{
 			command: "git",
@@ -306,6 +310,7 @@ test("populated repository/workspace scopes select exactly one run without forei
 						[
 							"--version",
 							"api schema --json",
+							"status server --json",
 							"pane list",
 							"agent list",
 						].includes(call.args.join(" ")),
@@ -572,8 +577,16 @@ test("pane and agent cwd plus foreground_cwd are independently required", async 
 	}
 });
 
-test("exact Herdr 0.7.5 protocol gate rejects other and unparseable runtimes before effects", async () => {
-	for (const variant of ["version", "protocol", "unparseable"]) {
+test("exact Herdr 0.7.5 runtime and server gate rejects every mismatch before effects", async () => {
+	for (const variant of [
+		"version",
+		"protocol",
+		"unparseable",
+		"server_version",
+		"server_protocol",
+		"server_incompatible",
+		"server_restart",
+	]) {
 		const repository = repo();
 		const stateRoot = join(temp("conductor-version-gate-"), "state");
 		const fake = new FakeHerdr();
@@ -588,6 +601,15 @@ test("exact Herdr 0.7.5 protocol gate rejects other and unparseable runtimes bef
 				return JSON.stringify({
 					protocol: variant === "protocol" ? 18 : 17,
 					schema_version: 1,
+				});
+			if (command === "fake" && args.join(" ") === "status server --json")
+				return JSON.stringify({
+					status: "running",
+					running: true,
+					version: variant === "server_version" ? "0.7.4" : "0.7.5",
+					protocol: variant === "server_protocol" ? 16 : 17,
+					compatible: variant !== "server_incompatible",
+					restart_needed: variant === "server_restart",
 				});
 			return fake.exec(command, args);
 		};

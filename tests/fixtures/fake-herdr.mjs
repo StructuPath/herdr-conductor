@@ -26,6 +26,17 @@ if (args.length === 1 && args[0] === "--version") {
 } else if (args[0] === "api" && args[1] === "schema") {
 	assert.deepEqual(args, ["api", "schema", "--json"]);
 	result({ protocol: 17, schema_version: 1 });
+} else if (args.join(" ") === "status server --json") {
+	process.stdout.write(
+		JSON.stringify({
+			status: "running",
+			running: true,
+			version: "0.7.5",
+			protocol: 17,
+			compatible: true,
+			restart_needed: false,
+		}),
+	);
 } else if (args[0] === "pane" && args[1] === "get") {
 	assert.deepEqual(args, ["pane", "get", args[2]]);
 	assert.ok(args[2] === anchor || Object.hasOwn(state.panes, args[2]));
