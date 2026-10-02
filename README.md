@@ -18,17 +18,21 @@ truth, archive transition, and retained resources.
 
 ## Supported contract
 
-Requirements: Herdr exactly `0.7.5`, Node.js 20 or current LTS, Git with 40-hex
-SHA-1 object IDs, Python 3.11+, and macOS or Linux.
+Requirements: Herdr exactly `0.7.5`, Node.js 20 or current LTS, Git with
+40-hex SHA-1 object IDs, Python 3.11+, and macOS or Linux for the pinned
+release. Select a matching, healthy client and running server; checking the
+client version alone is insufficient.
 
-The release and production-support pin remains Herdr `0.7.5` / protocol `17` /
-schema `1`. Conductor also has a bounded **development candidate** path for
-exactly Herdr `0.9.3` / protocol `22` / schema `1`: it is admitted only when
-the client schema exposes every API shape Conductor uses and the selected
-server reports the same healthy, compatible identity. This candidate path is
-limited to the isolated synthetic smoke below. It is not a support promotion,
-release certification, production installation, or reason to change an
-existing `0.7.5` deployment.
+| Herdr client/server | Conductor status |
+| --- | --- |
+| `0.7.5` / protocol `17` / schema `1` | Pinned release and production-support contract. |
+| `0.8.2` | Unsupported; a selected `0.7.5` CLI does not make a running `0.8.2` server compatible. |
+| Exactly `0.9.3` / protocol `22` / schema `1` | Bounded development candidate only. The client must expose the API shapes Conductor uses, and the running server must report the same healthy, compatible identity. |
+
+The `0.9.3` path is limited to the
+[isolated synthetic smoke covering seven action types across eleven invocations](#isolated-herdr-093-development-smoke).
+It is not a support promotion, release certification, production installation,
+or reason to change an existing `0.7.5` deployment.
 
 For every effecting action, Conductor:
 
