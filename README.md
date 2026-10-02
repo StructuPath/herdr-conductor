@@ -21,6 +21,15 @@ truth, archive transition, and retained resources.
 Requirements: Herdr exactly `0.7.5`, Node.js 20 or current LTS, Git with 40-hex
 SHA-1 object IDs, Python 3.11+, and macOS or Linux.
 
+The release and production-support pin remains Herdr `0.7.5` / protocol `17` /
+schema `1`. Conductor also has a bounded **development candidate** path for
+exactly Herdr `0.9.3` / protocol `22` / schema `1`: it is admitted only when
+the client schema exposes every API shape Conductor uses and the selected
+server reports the same healthy, compatible identity. This candidate path is
+limited to the isolated synthetic smoke below. It is not a support promotion,
+release certification, production installation, or reason to change an
+existing `0.7.5` deployment.
+
 For every effecting action, Conductor:
 
 - accepts only `HERDR_PLUGIN_CONTEXT_JSON`; there is no `CONDUCTOR_REPO`,
@@ -274,6 +283,46 @@ npm run evidence:stage2:finalize -- \
   --output-parent <exact-private-directory> \
   --candidate <commit-a>
 ```
+
+### Isolated Herdr 0.9.3 development smoke
+
+The development smoke runs all seven installed actions against an already
+running, non-default Herdr `0.9.3` session. It requires an exact opt-in, an
+absolute candidate binary, a session-specific socket below a temporary `HOME`,
+and matching `XDG_CONFIG_HOME` and `XDG_STATE_HOME` roots:
+
+```bash
+HOME=<temporary-root>/home \
+XDG_CONFIG_HOME=<temporary-root>/home/.config \
+XDG_STATE_HOME=<temporary-root>/home/.local/state \
+HERDR_SOCKET_PATH=<temporary-root>/home/.config/herdr/sessions/<session>/herdr.sock \
+CONDUCTOR_093_HERDR_BIN=<absolute-path-to-herdr-0.9.3> \
+CONDUCTOR_093_SESSION=<non-default-session> \
+CONDUCTOR_093_DEVELOPMENT_SMOKE=I_UNDERSTAND_THIS_MUTATES_ONLY_THE_ISOLATED_093_SESSION \
+npm run smoke:development:093
+```
+
+The harness refuses a default session, mismatched client/server identity,
+unhealthy endpoint, incompatible API schema, or non-temporary home. It links a
+temporary plugin copy only in the selected isolated server, restores any prior
+isolated Conductor link, removes its temporary agent profiles, and closes its
+workspace after stand-down. It does not install or update a production plugin,
+restart a server, or touch another Herdr session.
+
+A passing run retains its private `0700` temporary root and prints its path,
+repository/state paths, and cleanup outcomes in the JSON summary. Preserve it
+only as development evidence, then dispose of that harness-owned root manually
+when it is no longer needed. On failure, the root is retained for diagnosis.
+
+This smoke uses synthetic local shell workers and unauthenticated report
+fixtures. It performs no real Pi/model or network integration and is not
+formal evidence, release certification, production approval, or proof of
+general Herdr `0.9.x` compatibility.
+
+Rollback requires no plugin or data migration: cease using the isolated
+candidate session and continue with the release-pinned exact Herdr `0.7.5`
+client and matching `0.7.5` server. The candidate harness never changes that
+installation.
 
 ## Security and limitations
 

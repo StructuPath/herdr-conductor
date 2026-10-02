@@ -104,6 +104,15 @@ function fakeExec(command, args) {
 		assert.deepEqual(args, ["api", "schema", "--json"]);
 		return JSON.stringify({ protocol: 17, schema_version: 1 });
 	}
+	if (args.join(" ") === "status server --json")
+		return JSON.stringify({
+			status: "running",
+			running: true,
+			version: "0.7.5",
+			protocol: 17,
+			compatible: true,
+			restart_needed: false,
+		});
 	if (args[0] === "pane" && args[1] === "get") {
 		assert.deepEqual(args, ["pane", "get", args[2]]);
 		assert.ok(args[2] === `${workspace}:p0` || panes.has(args[2]));

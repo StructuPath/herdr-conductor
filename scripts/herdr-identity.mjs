@@ -52,14 +52,259 @@ export function herdrJson(exec, herdrBin, args) {
 	return value?.result ?? value;
 }
 
+const HERDR_093 = Object.freeze({
+	version: "0.9.3",
+	protocol: 22,
+	schemaVersion: 1,
+});
+
+const REQUIRED_METHODS_093 = Object.freeze({
+	"agent.list": "#/schemas/request/$defs/EmptyParams",
+	"agent.get": "#/schemas/request/$defs/AgentTarget",
+	"agent.start": "#/schemas/request/$defs/AgentStartParams",
+	"pane.split": "#/schemas/request/$defs/PaneSplitParams",
+	"pane.list": "#/schemas/request/$defs/PaneListParams",
+	"pane.get": "#/schemas/request/$defs/PaneTarget",
+	"pane.report_metadata": "#/schemas/request/$defs/PaneReportMetadataParams",
+	"pane.close": "#/schemas/request/$defs/PaneTarget",
+});
+
+function object(value) {
+	return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function hasType(schema, type) {
+	return (
+		schema?.type === type ||
+		(Array.isArray(schema?.type) && schema.type.includes(type))
+	);
+}
+
+function hasRequired(schema, ...names) {
+	return (
+		Array.isArray(schema?.required) &&
+		names.every((name) => schema.required.includes(name))
+	);
+}
+
+function hasRef(schema, ref) {
+	return (
+		schema?.$ref === ref ||
+		(Array.isArray(schema?.anyOf) &&
+			schema.anyOf.some((candidate) => candidate?.$ref === ref))
+	);
+}
+
+function hasMethod(request, method, paramsRef) {
+	return request.oneOf.some(
+		(candidate) =>
+			candidate?.properties?.method?.const === method &&
+			candidate?.properties?.params?.$ref === paramsRef &&
+			hasRequired(candidate, "method", "params"),
+	);
+}
+
+function resultVariant(result, type) {
+	return result.oneOf.find(
+		(candidate) => candidate?.properties?.type?.const === type,
+	);
+}
+
+function supportsConductorApi093(schema) {
+	const request = schema?.schemas?.request;
+	const requestDefs = request?.$defs;
+	const responseDefs = schema?.schemas?.success_response?.$defs;
+	const results = responseDefs?.ResponseResult;
+	if (
+		!object(request) ||
+		!Array.isArray(request.oneOf) ||
+		!object(requestDefs) ||
+		!object(responseDefs) ||
+		!Array.isArray(results?.oneOf)
+	)
+		return false;
+
+	for (const [method, paramsRef] of Object.entries(REQUIRED_METHODS_093))
+		if (!hasMethod(request, method, paramsRef)) return false;
+
+	const paneTarget = requestDefs.PaneTarget;
+	const agentTarget = requestDefs.AgentTarget;
+	const split = requestDefs.PaneSplitParams;
+	const metadata = requestDefs.PaneReportMetadataParams;
+	const start = requestDefs.AgentStartParams;
+	const context = requestDefs.PluginInvocationContext;
+	if (
+		!hasType(requestDefs.EmptyParams, "object") ||
+		!hasType(requestDefs.PaneListParams, "object") ||
+		!hasRequired(paneTarget, "pane_id") ||
+		!hasType(paneTarget?.properties?.pane_id, "string") ||
+		!hasRequired(agentTarget, "target") ||
+		!hasType(agentTarget?.properties?.target, "string") ||
+		!hasRequired(split, "direction") ||
+		!hasRef(
+			split?.properties?.direction,
+			"#/schemas/request/$defs/SplitDirection",
+		) ||
+		!hasType(requestDefs.SplitDirection, "string") ||
+		!requestDefs.SplitDirection.enum?.includes("right") ||
+		!hasType(split?.properties?.target_pane_id, "string") ||
+		!hasType(split?.properties?.cwd, "string") ||
+		!hasType(split?.properties?.focus, "boolean") ||
+		!hasRequired(metadata, "pane_id", "source") ||
+		!hasType(metadata?.properties?.pane_id, "string") ||
+		!hasType(metadata?.properties?.source, "string") ||
+		!hasType(metadata?.properties?.tokens, "object") ||
+		!hasRequired(start, "name", "kind", "pane_id") ||
+		!["name", "kind", "pane_id"].every((name) =>
+			hasType(start?.properties?.[name], "string"),
+		) ||
+		!hasType(start?.properties?.timeout_ms, "integer") ||
+		!["workspace_id", "workspace_cwd", "focused_pane_id"].every((name) =>
+			hasType(context?.properties?.[name], "string"),
+		)
+	)
+		return false;
+
+	const paneInfo = responseDefs.PaneInfo;
+	const agentInfo = responseDefs.AgentInfo;
+	const agentSession = responseDefs.AgentSessionInfo;
+	const paneIdentityFields = [
+		"workspace_id",
+		"pane_id",
+		"terminal_id",
+		"cwd",
+		"foreground_cwd",
+	];
+	const agentIdentityFields = [...paneIdentityFields, "name"];
+	if (
+		!hasRequired(paneInfo, "workspace_id", "pane_id", "terminal_id") ||
+		!paneIdentityFields.every((name) =>
+			hasType(paneInfo?.properties?.[name], "string"),
+		) ||
+		!hasType(paneInfo?.properties?.tokens, "object") ||
+		!hasRef(
+			paneInfo?.properties?.agent_session,
+			"#/schemas/success_response/$defs/AgentSessionInfo",
+		) ||
+		!hasRequired(agentInfo, "workspace_id", "pane_id", "terminal_id") ||
+		!agentIdentityFields.every((name) =>
+			hasType(agentInfo?.properties?.[name], "string"),
+		) ||
+		!(
+			hasType(agentInfo?.properties?.agent_status, "string") ||
+			(hasRef(
+				agentInfo?.properties?.agent_status,
+				"#/schemas/success_response/$defs/AgentStatus",
+			) &&
+				hasType(responseDefs.AgentStatus, "string"))
+		) ||
+		!hasType(agentInfo?.properties?.tokens, "object") ||
+		!hasRef(
+			agentInfo?.properties?.agent_session,
+			"#/schemas/success_response/$defs/AgentSessionInfo",
+		) ||
+		!hasRequired(agentSession, "source", "agent", "kind", "value") ||
+		!["source", "agent", "value"].every((name) =>
+			hasType(agentSession?.properties?.[name], "string"),
+		) ||
+		!(
+			hasType(agentSession?.properties?.kind, "string") ||
+			(hasRef(
+				agentSession?.properties?.kind,
+				"#/schemas/success_response/$defs/AgentSessionRefKind",
+			) &&
+				hasType(responseDefs.AgentSessionRefKind, "string"))
+		)
+	)
+		return false;
+
+	const paneResult = resultVariant(results, "pane_info");
+	const paneListResult = resultVariant(results, "pane_list");
+	const agentResult = resultVariant(results, "agent_info");
+	const agentListResult = resultVariant(results, "agent_list");
+	const agentStartedResult = resultVariant(results, "agent_started");
+	const okResult = resultVariant(results, "ok");
+	return (
+		hasRequired(paneResult, "type", "pane") &&
+		hasRef(
+			paneResult?.properties?.pane,
+			"#/schemas/success_response/$defs/PaneInfo",
+		) &&
+		hasRequired(paneListResult, "type", "panes") &&
+		hasRef(
+			paneListResult?.properties?.panes?.items,
+			"#/schemas/success_response/$defs/PaneInfo",
+		) &&
+		hasRequired(agentResult, "type", "agent") &&
+		hasRef(
+			agentResult?.properties?.agent,
+			"#/schemas/success_response/$defs/AgentInfo",
+		) &&
+		hasRequired(agentListResult, "type", "agents") &&
+		hasRef(
+			agentListResult?.properties?.agents?.items,
+			"#/schemas/success_response/$defs/AgentInfo",
+		) &&
+		hasRequired(agentStartedResult, "type", "agent", "argv") &&
+		hasRef(
+			agentStartedResult?.properties?.agent,
+			"#/schemas/success_response/$defs/AgentInfo",
+		) &&
+		hasType(agentStartedResult?.properties?.argv, "array") &&
+		hasRequired(okResult, "type")
+	);
+}
+
+function requireHerdrServer(exec, herdrBin, profile, { endpoint = false } = {}) {
+	const server = herdrJson(exec, herdrBin, ["status", "server", "--json"]);
+	if (
+		server.status !== "running" ||
+		server.running !== true ||
+		server.version !== profile.version ||
+		server.protocol !== profile.protocol ||
+		server.compatible !== true ||
+		server.restart_needed !== false ||
+		(endpoint &&
+			(server.endpoint_compatible !== true ||
+				server.server_binary_stale !== false))
+	)
+		fail(
+			"unsupported_herdr",
+			`Herdr ${profile.version} client requires a healthy compatible ${profile.version}/protocol ${profile.protocol} server`,
+		);
+}
+
 export function requireHerdrRuntime(exec, herdrBin) {
 	const version = exec(herdrBin, ["--version"]);
-	if (version !== "herdr 0.7.5")
-		fail("unsupported_herdr", "Herdr runtime must be exactly 0.7.5");
+	if (version === "herdr 0.7.5") {
+		const schema = herdrJson(exec, herdrBin, ["api", "schema", "--json"]);
+		if (schema.protocol !== 17 || schema.schema_version !== 1)
+			fail("unsupported_herdr", "Herdr protocol must be exactly 17/schema 1");
+		const profile = Object.freeze({
+			version: "0.7.5",
+			protocol: 17,
+			schemaVersion: 1,
+		});
+		requireHerdrServer(exec, herdrBin, profile);
+		return profile;
+	}
+	if (version !== `herdr ${HERDR_093.version}`)
+		fail(
+			"unsupported_herdr",
+			"Herdr runtime must be exactly 0.7.5 or capability-validated 0.9.3",
+		);
 	const schema = herdrJson(exec, herdrBin, ["api", "schema", "--json"]);
-	if (schema.protocol !== 17 || schema.schema_version !== 1)
-		fail("unsupported_herdr", "Herdr protocol must be exactly 17/schema 1");
-	return Object.freeze({ version: "0.7.5", protocol: 17, schemaVersion: 1 });
+	if (
+		schema.protocol !== HERDR_093.protocol ||
+		schema.schema_version !== HERDR_093.schemaVersion ||
+		!supportsConductorApi093(schema)
+	)
+		fail(
+			"unsupported_herdr",
+			"Herdr 0.9.3 lacks the required protocol 22/schema 1 Conductor API capabilities",
+		);
+	requireHerdrServer(exec, herdrBin, HERDR_093, { endpoint: true });
+	return HERDR_093;
 }
 
 export function paneFrom(result) {

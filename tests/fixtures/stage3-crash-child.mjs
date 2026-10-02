@@ -8,6 +8,15 @@ function exec(command, args, options = {}) {
 		if (args.length === 1 && args[0] === "--version") return "herdr 0.7.5";
 		if (args.join(" ") === "api schema --json")
 			return JSON.stringify({ protocol: 17, schema_version: 1 });
+		if (args.join(" ") === "status server --json")
+			return JSON.stringify({
+				status: "running",
+				running: true,
+				version: "0.7.5",
+				protocol: 17,
+				compatible: true,
+				restart_needed: false,
+			});
 		throw new Error(`unexpected fake Herdr call: ${args.join(" ")}`);
 	}
 	return execFileSync(command, args, {
