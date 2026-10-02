@@ -30,7 +30,7 @@ client version alone is insufficient.
 | Exactly `0.9.3` / protocol `22` / schema `1` | Bounded development candidate only. The client must expose the API shapes Conductor uses, and the running server must report the same healthy, compatible identity. |
 
 The `0.9.3` path is limited to the
-[isolated synthetic seven-action smoke](#isolated-herdr-093-development-smoke).
+[isolated synthetic smoke covering seven action types across eleven invocations](#isolated-herdr-093-development-smoke).
 It is not a support promotion, release certification, production installation,
 or reason to change an existing `0.7.5` deployment.
 
